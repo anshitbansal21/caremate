@@ -80,12 +80,19 @@ until acked; a fall that fires while offline is buffered in a bounded outbox
 exponential reconnect backoff. All timing is `millis()`-based — no `delay()` in
 the hot path.
 
-## Hardware to confirm before first power-up (per CLAUDE.md engineering rules)
+## Hardware confirmed on bench
 
-- Exact Glyph C6 **I2C (SDA/SCL) pins** for the Qwiic/Modulino bus, at **3V3**.
-- Modulino Movement revision uses the **LSM6DSOX**; verify `Modulino.begin()`
-  targets the correct `Wire` instance for this board.
-- Battery wiring (Ryaan owns the physical build + continuity/power checks).
+- Glyph C6 (PCB Cupid) GLINK/Qwiic connector: **SDA=GPIO4, SCL=GPIO5, 3V3**
+  (not the generic esp32c6 board default of 23/22). `imu.cpp` calls
+  `Wire.begin(4, 5)` before `Modulino.begin()` to target these pins.
+- Modulino Movement confirmed on I2C at **0x6A** (LSM6DSOX default address)
+  via raw bus scan; `movement.begin()` succeeds and streams plausible
+  accel/gyro values (SVM ≈ 1.0 g at rest).
+- FQBN: `esp32:esp32:esp32c6:CDCOnBoot=cdc` — **`CDCOnBoot=cdc` is required**,
+  the default (`CDCOnBoot=default`, i.e. disabled) silently drops all
+  `Serial` output on this board's native USB.
+- Still open: battery wiring (Ryaan owns the physical build + continuity/
+  power checks).
 
 ## Build / bench test
 

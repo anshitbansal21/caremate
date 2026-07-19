@@ -13,12 +13,21 @@
 
 #include "imu.h"
 
+#include <Wire.h>
 #include <Modulino.h>
 
 static ModulinoMovement movement;
 static bool ready = false;
 
+// Confirmed on bench (I2C scan, device found at 0x6A): the Glyph C6 (PCB
+// Cupid) GLINK/Qwiic connector is hardwired to GPIO4=SDA, GPIO5=SCL — NOT the
+// generic esp32c6 board default (23/22) that Modulino.begin() would use on
+// its own. Wire must be begun on these pins first.
+static const int GLYPH_C6_I2C_SDA = 4;
+static const int GLYPH_C6_I2C_SCL = 5;
+
 bool imuBegin() {
+  Wire.begin(GLYPH_C6_I2C_SDA, GLYPH_C6_I2C_SCL);
   Modulino.begin();          // starts the Qwiic/I2C bus
   ready = movement.begin();  // false if the sensor is not detected
   return ready;

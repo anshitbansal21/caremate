@@ -35,6 +35,30 @@ token is configured on the hub; provider credentials (e.g. a VLM key) never leav
 
 Missing/wrong token → `401 {"error":"unauthorized"}`.
 
+## Connecting the app (dev vs demo)
+
+**Do not hardcode the hub address.** Make the **base URL + token a config field** —
+the address changes constantly (dev laptop → tunnel → demo IP), and a field beats
+rebuilding. A plain LAN IP (`192.168.x.x`) only works on the *same* network; to
+cross networks you need a tunnel.
+
+1. **Build the app with no Arduino and no shared network.** `run_hub` is pure
+   Python, so run the hub on your own machine:
+   `python -m caremate_hub.run_hub --demo` → point the app at
+   `http://localhost:8080` (or your Mac's LAN IP for a physical device). You get
+   real SSE events, a scripted fall, and working `/analyze` to build against.
+   Do most of the app here.
+2. **Reach a real hub on a different network.** Run a tunnel on the hub —
+   `ngrok http 8080` (or Cloudflare Tunnel) — for an HTTPS URL that works from
+   anywhere and also satisfies iOS ATS. Dev/integration only.
+3. **Demo day.** Put the phone on the hub's network (hub Wi-Fi AP or a shared
+   hotspot) and set the config to the hub's LAN IP, e.g. `http://192.168.x.x:8080`.
+
+**iOS gotchas** for the plain-HTTP LAN path (localhost and the HTTPS tunnel avoid
+both): add an ATS exception (`NSAllowsLocalNetworking` or an `NSExceptionDomains`
+entry) or iOS blocks `http://`; and add `NSLocalNetworkUsageDescription` for the
+iOS 14+ local-network permission prompt.
+
 ## Endpoints
 
 ### `GET /events` — real-time event stream (SSE)

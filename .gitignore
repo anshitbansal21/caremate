@@ -21,6 +21,11 @@ DerivedData/
 secrets.h
 credentials.h
 
+# Model weights (downloaded on demand, never committed)
+*.pt
+*.onnx
+*.tflite
+
 # Editors and operating systems
 .DS_Store
 .idea/
