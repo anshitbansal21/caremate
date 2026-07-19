@@ -1,30 +1,30 @@
 # CareMate
 
-CareMate is an autonomous companion robot concept for older adults. The device is intended to move with its user, provide simple physical interaction, share opt-in daily activity updates, detect possible falls, and alert trusted family members quickly.
+CareMate is a stationary elderly-safety prototype with a wearable motion sensor, a camera-based vision hub, and a native iOS app. It detects possible falls, confirms them using sensor and vision evidence, provides a local alert, and shows the camera feed, status, and alerts in the app.
 
 > **Prototype status:** This repository is an early hardware and software starting point. CareMate is not a certified medical device or emergency service. Fall detection and alerts must be tested carefully and must not be the user's only safety system.
 
 ## Project goals
 
-- Provide accessible interaction through buttons, an LCD, LEDs, a buzzer, and a rotary encoder.
-- Detect possible falls using movement-sensor data.
-- Capture camera/microphone input for future on-device AI features.
-- Send clear local feedback before sharing an alert.
-- Support a future mobile chassis without coupling navigation to safety logic.
+- Detect a candidate fall on the Glyph C6 wearable using the Modulino Movement sensor.
+- Use the stationary UNO Q and C270 webcam to annotate activity, report person/room status, and help confirm or reject candidate falls.
+- Provide clear local feedback through the LCD, red LED, and buzzer.
+- Show the live annotated camera feed, current status, and real-time fall alert in a native iOS app, with **Analyze space**, test, cancel, and acknowledgement interactions.
 - Respect privacy: obtain consent, collect only necessary data, and make sharing visible and controllable.
 
 ## Available hardware
 
 - Arduino UNO Q 2GB
 - Logitech C270 USB webcam with microphone
-- Modulino Movement sensor (shipment-dependent)
+- Modulino Movement sensor
 - Glyph C6 (ESP32-C6), headers pre-soldered
 - 16×2 LCD, 2 push buttons, buzzer, rotary encoder
 - 2 Hall sensors and 2 magnets
 - 2 blue LEDs, 2 red LEDs, 2 LDRs
 - 7-segment display, SPDT switch, IR sensor
-- Breadboard, jumper wires, and USB-C data cable
-- Possible future chassis with motors and wheels
+- Breadboard and jumper wires
+
+No motors or mobile chassis are confirmed. Each LED requires a current-limiting resistor; use 330 Ω for initial tests unless measurements justify another value, and confirm that resistors are available before wiring.
 
 ## Repository layout
 
@@ -60,36 +60,41 @@ Select the board and serial port, compile, and upload. The starter sketch requir
 
 Start with only the board connected. Add one component at a time and document its voltage, ground, and pin assignment in `docs/hardware-plan.md` before wiring it.
 
-## First prototype milestone
+## MVP: exactly three features
 
-The recommended first demo is intentionally small:
+1. Live fall detection using a wearable sensor candidate plus vision confirmation, followed by a local alert.
+2. A live annotated feed labeling on-bed, standing, sitting, lying, or walking, plus an on-demand person/room summary from the current camera view.
+3. A native iOS app connected to the base-station camera feed, showing current status and real-time fall alerts, and allowing the user to request **Analyze space**.
 
-1. A button toggles between **Ready** and **Help requested**.
-2. The LCD and LEDs show the current state.
-3. The buzzer confirms an alert locally.
-4. A simulated fall event starts a cancellation countdown.
-5. The second button cancels a false alarm.
-6. Only after this flow is reliable should the movement sensor trigger it.
-
-Camera AI, remote notifications, and autonomous driving should be separate later milestones.
+Push buttons, the rotary encoder, Hall sensors/magnets, LDRs, 7-segment display, SPDT switch, and IR sensor are deferred until these features work end to end.
 
 ## Proposed operating states
 
 ```text
-STARTING → READY → POSSIBLE_FALL → ALERTING → READY
-                    ↘ CANCELLED ───────────↗
-READY → MANUAL_HELP → ALERTING
+sensor candidate → awaiting vision → confirmed fall → locally alerting
+                                  ↘ rejected/uncertain
 ```
 
 Every alert should have a visible/audible indication, a cancellation window when appropriate, an acknowledgement path, and a record of whether delivery succeeded.
+
+## Team ownership
+
+| Person | Ownership |
+|---|---|
+| Aryan | Wearable fall-detection device, Glyph C6/Modulino firmware, and candidate-event delivery to the base station/app flow |
+| Anshit | Base station, image detection, OpenAI-compatible summaries, fusion/backend, camera feed, app alerts, and native iOS app |
+| Ryaan | Hardware connections, wiring review, soldering, continuity and power checks, and bench assembly |
+
+Aryan's device reports a **possible fall** to Anshit's server and iOS UI; the base station then updates it after vision fusion. Ryaan reviews physical interfaces before soldering or first power-up.
 
 ## Team decisions still needed
 
 - Exact UNO Q board/core and how its Linux/AI side communicates with its microcontroller side
 - Movement sensor model, library, sampling rate, and fall-detection approach
 - LCD interface type (parallel or I²C backpack)
-- Chassis, motor driver, battery, charging, and emergency-stop design
-- Alert transport (phone companion, Wi-Fi service, SMS gateway, etc.)
+- Wearable-to-hub and hub-controller message schemas
+- Alert transport and iOS camera-feed/API protocol
+- Multimodal model/provider selection after testing capability, latency, cost, privacy, and retention
 - Consent, retention, encryption, and access rules for camera/audio/activity data
 - Who receives alerts and what happens if nobody acknowledges one
 
@@ -100,7 +105,9 @@ Every alert should have a visible/audible indication, a cancellation window when
 - Verify component voltage and current requirements before wiring.
 - Keep credentials and personal data out of Git.
 - Require explicit user consent before recording or sharing audio, video, or activity.
-- Provide a physical way to mute/disable sensing and clearly show its state.
+- Make camera/microphone operation visible and provide an approved test/cancellation mechanism before involving real recipients.
+- Treat model output as advisory evidence; a single LLM response must not silently trigger or suppress a safety alert.
+- Send only consented, request-scoped frames to an off-device model; exclude audio and continuous video, avoid storing frames by default, and keep API keys on the server.
 
 ## Contributing
 

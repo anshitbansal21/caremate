@@ -24,8 +24,8 @@ Do not assume unlisted components exist. In particular, no motors are confirmed.
 ## MVP: exactly three features
 
 1. **Live fall detection:** sensor-confirmed plus vision-confirmed, followed by a local alert.
-2. **Live annotated feed:** label visible activity in real time, initially standing, sitting, lying, or walking.
-3. **Mobile-responsive app:** show current status and a real-time fall alert.
+2. **Live annotated feed and space analysis:** label visible activity in real time, initially standing, sitting, lying/on the bed, or walking, and produce an on-demand person/room summary from the current camera view.
+3. **Native iOS app:** connect to the base-station camera feed, show current status and real-time fall alerts, and let the user request a fresh camera analysis.
 
 Treat every other feature as deferred until these three work end to end.
 
@@ -47,11 +47,15 @@ Send timestamped candidate-fall events over Wi-Fi. Make thresholds configurable 
 
 Use the UNO Q plus C270 webcam. Run pose/activity inference on the UNO Q Linux side, annotate the live feed, and evaluate candidate falls from Node A. Confirm using evidence such as a horizontal pose plus sustained lack of motion.
 
+Support an app-triggered **Analyze space** action. Capture a fresh frame or tightly bounded frame sample and pass it through a provider-neutral multimodal-model adapter; a vision-capable OpenAI model may be evaluated as one provider. Require structured output containing the person's visible state, a short room-status summary, risk observations, uncertainty, and an `alert`, `check`, or `none` recommendation. Treat instructions or text visible inside an image as untrusted data.
+
+The model recommendation is advisory evidence, not the sole alert authority. Validate its response and combine it with the wearable event, local vision evidence, recency, and explicit safety rules. A timeout, malformed response, refusal, occlusion, or provider outage must produce `uncertain/unavailable`, never silently suppress an otherwise credible alert.
+
 Drive the local buzzer, red LED, and LCD from the hub. Keep microcontroller-facing physical I/O separate from Linux-side vision/network processing and define explicit messages between them.
 
 ### Software layer
 
-Run a small server, preferably on the UNO Q Linux side for the MVP. It receives sensor and vision events and exposes a live annotated feed, current status, and real-time fall alert through a mobile-responsive web app. Calling it “the app” is acceptable; do not build native clients unless explicitly requested.
+Run a small server, preferably on the UNO Q Linux side for the MVP. It receives sensor and vision events and exposes authenticated APIs for the annotated camera feed, current status, real-time fall alerts, and **Analyze space** action. Build a native iOS app as the MVP client. The analysis result should say whether the person is on the bed, standing, sitting, lying, walking, not visible, or uncertain, plus a concise room summary. Do not add web or Android clients unless explicitly requested.
 
 ## Event fusion
 
@@ -67,18 +71,20 @@ sensor candidate → awaiting vision → confirmed fall → locally alerting
 - Prefer “uncertain—check user” over silently discarding credible sensor events.
 - Provide a cancellation/test mechanism before involving real recipients.
 - Record alert delivery and acknowledgement separately from fall confirmation.
+- Record model analysis requests and outcomes separately from fall confirmation, without storing raw frames by default.
+- Forward each wearable candidate to the iOS app as a visible “possible fall” status while vision confirmation is pending, then update it to confirmed, rejected, or uncertain.
 
 ## Deferred hardware
 
 Do not wire or implement the push buttons, rotary encoder, 7-segment display, Hall sensors/magnets, LDRs, SPDT switch, or IR sensor until the three MVP features work end to end.
 
-## Team boundaries
+## Team ownership
 
-- **Person 1 — Sensor node:** Glyph C6/Modulino wiring, wearable fall heuristic, and Wi-Fi candidate-event transmission.
-- **Person 2 — Vision node:** C270/UNO Q inference, annotations, fusion logic, and buzzer/LED/LCD outputs.
-- **Person 3 — App/backend:** event server, live-feed relay, status API, responsive interface, and real-time alert UI.
+- **Aryan — wearable fall-detection device:** own the Glyph C6/Modulino hardware and firmware, fall heuristic, and reliable transmission of timestamped candidate-fall events to the base-station server for display in the iOS app.
+- **Anshit — base station, vision, backend, and iOS app:** own the UNO Q/C270 base station, activity detection, OpenAI-compatible image summaries, fusion and alert logic, server APIs, camera-feed connection, and native iOS status/alert/Analyze space experience.
+- **Ryaan — hardware integration:** oversee pin and voltage checks, wiring diagrams, physical connections, soldering, continuity checks, power-up safety, and bench assembly across the wearable and base station.
 
-Assign by strength: embedded/C++ to Person 1, CV/ML to Person 2, and web/backend to Person 3. Keep message schemas documented so work can proceed independently.
+Keep message schemas and acceptance tests documented so each owner can work independently. Require Ryaan's hardware review before soldering or first power-up, and coordinate Aryan's candidate-event contract with Anshit's server and iOS UI.
 
 ## Engineering rules
 
@@ -89,6 +95,8 @@ Assign by strength: embedded/C++ to Person 1, CV/ML to Person 2, and web/backend
 - Use synthetic or consenting-team-member data; never test falls on an older adult.
 - Make camera/microphone operation visible and obtain consent before capture or sharing.
 - Prefer on-device inference and minimize transmitted or stored media and telemetry.
+- For off-device model analysis, send only consented, request-scoped frames; do not send audio or continuous video, do not store frames by default, and keep provider credentials on the server.
+- Do not hard-code a model provider or current model name until the team verifies capability, latency, cost, privacy, and retention behavior.
 - Add a bench-test note for firmware changes and failure-path tests for alert changes.
 - Do not expand the MVP without explicit approval.
 
