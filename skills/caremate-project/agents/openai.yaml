@@ -1,4 +1,0 @@
-interface:
-  display_name: "CareMate Project"
-  short_description: "Build the stationary CareMate safety MVP"
-  default_prompt: "Use $caremate-project to implement the next CareMate MVP task."

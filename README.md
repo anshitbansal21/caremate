@@ -36,6 +36,8 @@ caremate/
 │   ├── architecture.md          # Proposed system boundaries and data flow
 │   └── hardware-plan.md         # Initial controls and pin-planning worksheet
 ├── .gitignore
+├── AGENTS.md                    # Portable agent workflow (Codex, Claude Code, ...)
+├── CLAUDE.md                    # Scope, architecture, and ownership source of truth
 ├── CONTRIBUTING.md
 └── README.md
 ```
@@ -68,6 +70,13 @@ Start with only the board connected. Add one component at a time and document it
 
 Push buttons, the rotary encoder, Hall sensors/magnets, LDRs, 7-segment display, SPDT switch, and IR sensor are deferred until these features work end to end.
 
+## Demo script
+
+1. **Live fall detection** — trigger a simulated fall (drop-test rig, never a person) and show the alert reach the phone app in real time.
+2. **Live query** — ask the app what the person is doing and show the live annotated feed plus a natural-language description come back.
+
+See `CLAUDE.md` § Demo script for the full acceptance-test detail and network-independence requirement.
+
 ## Proposed operating states
 
 ```text
@@ -81,14 +90,15 @@ Every alert should have a visible/audible indication, a cancellation window when
 
 | Person | Ownership |
 |---|---|
-| Aryan | Wearable fall-detection device, Glyph C6/Modulino firmware, and candidate-event delivery to the base station/app flow |
-| Anshit | Base station, image detection, OpenAI-compatible summaries, fusion/backend, camera feed, app alerts, and native iOS app |
-| Ryaan | Hardware connections, wiring review, soldering, continuity and power checks, and bench assembly |
+| Aryan | Control system (ESP32↔UNO Q, camera↔UNO Q), wearable fall-detection firmware, YOLOv8 vision on the UNO Q, and the natural-language space-analysis layer — effectively the whole backend: wearable events, camera feed, and queries |
+| Anshit | API layer built on Aryan's control system, and the native iOS app that consumes it |
+| Ryaan | Wearable hardware: soldering the battery to the Glyph C6, wiring in the Modulino Movement sensor, and power/continuity checks |
 
-Aryan's device reports a **possible fall** to Anshit's server and iOS UI; the base station then updates it after vision fusion. Ryaan reviews physical interfaces before soldering or first power-up.
+Aryan's control system reports a **possible fall** and updates it after vision fusion; Anshit's API/app surfaces that status. Ryaan reviews the wearable's physical build before soldering or first power-up. The stationary hub's local alert wiring (LCD, buzzer, LED) still needs an owner.
 
 ## Team decisions still needed
 
+- Who wires and drives the stationary hub's local alert hardware (LCD, buzzer, red LED)
 - Exact UNO Q board/core and how its Linux/AI side communicates with its microcontroller side
 - Movement sensor model, library, sampling rate, and fall-detection approach
 - LCD interface type (parallel or I²C backpack)

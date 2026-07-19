@@ -29,6 +29,17 @@ Do not assume unlisted components exist. In particular, no motors are confirmed.
 
 Treat every other feature as deferred until these three work end to end.
 
+## Demo script
+
+Two end-to-end scenarios, both must run without depending on venue Wi-Fi/internet being reliable:
+
+1. **Live fall detection.** Trigger a simulated fall on the wearable using a drop-test rig or controlled motion, never a person. Wearable sends a candidate event → vision hub confirms via pose fusion → local buzzer/LED/LCD alert fires → phone app shows the fall alert in real time.
+2. **Live query.** From the phone app, ask what the person is doing (the app-triggered **Analyze space** action). App requests a fresh frame from the hub → hub runs YOLOv8 plus the NL/VLM layer → app shows the live annotated image feed and a natural-language activity description.
+
+Both scenarios are the acceptance test for the existing three MVP features, not new scope. Scenario 1 exercises the wearable + vision-hub + local-alert path; scenario 2 exercises the vision-hub + NL layer + app-query path. Rehearse both before presenting.
+
+Default the NL/VLM layer to an on-device small VLM running on the UNO Q rather than a cloud API call — the UNO Q's Linux side targets on-device AI, and demo reliability shouldn't depend on venue network. Treat a cloud multimodal model as a fallback only if on-device output quality is insufficient, not the default path.
+
 ## Architecture
 
 ### Node A: wearable sensor node
@@ -80,11 +91,13 @@ Do not wire or implement the push buttons, rotary encoder, 7-segment display, Ha
 
 ## Team ownership
 
-- **Aryan — wearable fall-detection device:** own the Glyph C6/Modulino hardware and firmware, fall heuristic, and reliable transmission of timestamped candidate-fall events to the base-station server for display in the iOS app.
-- **Anshit — base station, vision, backend, and iOS app:** own the UNO Q/C270 base station, activity detection, OpenAI-compatible image summaries, fusion and alert logic, server APIs, camera-feed connection, and native iOS status/alert/Analyze space experience.
-- **Ryaan — hardware integration:** oversee pin and voltage checks, wiring diagrams, physical connections, soldering, continuity checks, power-up safety, and bench assembly across the wearable and base station.
+- **Aryan — control system, wearable firmware, and vision hub software:** own the ESP32↔UNO Q and camera↔UNO Q messaging layer, the Glyph C6/Modulino fall-detection heuristic, YOLOv8-based activity/fall detection on the UNO Q, and the natural-language space-analysis layer. This is the system's single backend — wearable events, camera feed, and query responses all originate here.
+- **Anshit — API contracts and phone app:** own the API layer built on top of Aryan's control system (status, live feed, fall alerts, Analyze space) and the native iOS app that consumes it.
+- **Ryaan — wearable hardware:** own the wearable's physical build — soldering the 3.7 V 2000 mAh battery to the Glyph C6 and wiring in the Modulino Movement sensor — plus continuity and power-safety checks before first power-up.
 
-Keep message schemas and acceptance tests documented so each owner can work independently. Require Ryaan's hardware review before soldering or first power-up, and coordinate Aryan's candidate-event contract with Anshit's server and iOS UI.
+**Open:** no owner is yet assigned for the stationary hub's local alert wiring (LCD, buzzer, red LED on the UNO Q). Assign this before wiring begins.
+
+Keep message schemas and acceptance tests documented so each owner can work independently. Confirm voltage and continuity before first power-up on either node, and keep Aryan's event/query contract aligned with Anshit's API layer.
 
 ## Engineering rules
 
@@ -106,6 +119,6 @@ Keep message schemas and acceptance tests documented so each owner can work inde
 - `docs/architecture.md`: system boundaries and message flow
 - `docs/hardware-plan.md`: hardware roles and pin-planning worksheet
 - `firmware/caremate_controller/`: UNO Q controller firmware
-- `skills/caremate-project/SKILL.md`: portable Codex workflow
+- `AGENTS.md`: portable agent workflow (Codex, Claude Code, and others)
 
 Update relevant documentation in the same change when implementation decisions change.

@@ -15,7 +15,7 @@ The remaining confirmed kit is 2 push buttons, a rotary encoder, 2 Hall sensors,
 
 No motors or mobile chassis are confirmed. The client is a native iOS app and requires an iPhone for app testing; no additional CareMate hardware is implied.
 
-Ryaan owns hardware integration review, wiring, soldering, continuity checks, and first-power-up safety. Aryan owns the wearable build, while Anshit owns the stationary base-station build and software; both physical builds should be reviewed with Ryaan before power is applied.
+Ryaan owns the wearable's physical build — soldering the battery and wiring the Modulino sensor — plus continuity and power-safety checks before first power-up. Aryan owns the wearable firmware/heuristic and all UNO Q-side software (control system, vision, NL analysis). Anshit owns the API layer and native iOS app. The stationary hub's local alert wiring (LCD, buzzer, LED) is not yet assigned.
 
 ## Pin assignment worksheet
 

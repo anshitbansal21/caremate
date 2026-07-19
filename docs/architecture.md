@@ -18,7 +18,7 @@ The hub's microcontroller-facing I/O drives the buzzer, red LED, and LCD for loc
 
 Prefer a small server on the UNO Q Linux side. It receives wearable and vision events and exposes authenticated APIs for the annotated camera feed, current status, real-time fall alerts, and **Analyze space**. Build the MVP client as a native iOS app. The action requests a fresh camera analysis and returns the person's visible state and a concise room summary. The app may also provide approved test, cancel, and acknowledgement actions. Web and Android clients and general-purpose cloud infrastructure are outside scope unless explicitly requested.
 
-When Aryan's wearable sends a candidate-fall event, the server forwards a visible **possible fall** state to the iOS app while Anshit's base station awaits vision confirmation. The UI then updates that same event to confirmed, rejected, or uncertain without representing the wearable candidate as a confirmed fall.
+When the wearable sends a candidate-fall event, Aryan's control system forwards a visible **possible fall** state to the phone app through Anshit's API while the vision layer awaits confirmation. The UI then updates that same event to confirmed, rejected, or uncertain without representing the wearable candidate as a confirmed fall.
 
 ## On-demand analysis flow
 
@@ -36,11 +36,11 @@ The model returns an `alert`, `check`, or `none` recommendation, but determinist
 
 | Owner | Responsibility |
 |---|---|
-| Aryan | Glyph C6/Modulino wearable, fall heuristic, and candidate-event transmission |
-| Anshit | UNO Q/C270 base station, image detection, OpenAI-compatible summary, fusion/backend, camera feed, alerts, and native iOS app |
-| Ryaan | Hardware connection review, wiring, soldering, continuity, power safety, and bench assembly |
+| Aryan | ESP32↔UNO Q and camera↔UNO Q control system, Glyph C6/Modulino fall heuristic, YOLOv8 vision, and the NL space-analysis layer |
+| Anshit | API layer built on Aryan's control system, and the native iOS app |
+| Ryaan | Wearable hardware: soldering the battery, wiring the Modulino sensor, continuity and power safety |
 
-The wearable event schema is the handoff between Aryan and Anshit. Ryaan reviews physical interfaces before soldering or first power-up.
+The event/query schema exposed by Aryan's control system is the handoff to Anshit's API layer. Ryaan reviews the wearable's physical build before soldering or first power-up. No owner is yet assigned for the stationary hub's local alert wiring (LCD, buzzer, red LED).
 
 ## Fusion flow
 
