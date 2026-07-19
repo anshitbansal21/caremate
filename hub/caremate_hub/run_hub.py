@@ -110,6 +110,9 @@ def main() -> None:
                         "(dependency-free, un-annotated; no ultralytics/opencv)")
     p.add_argument("--feed-device", default="/dev/video0",
                    help="V4L2 device for --feed-camera")
+    p.add_argument("--analyze-onnx", default=None, metavar="MODEL.onnx",
+                   help="run Analyze-space with on-device YOLOv8-pose via onnxruntime "
+                        "(single-frame, on demand). Uses the webcam frames; implies a camera.")
     p.add_argument("--serial", default=None, help="MCU serial device for real alerts")
     p.add_argument("--baud", type=int, default=115200)
     p.add_argument("--demo", action="store_true", help="inject a scripted fall (no hardware)")
@@ -119,18 +122,25 @@ def main() -> None:
 
     clock = RealClock()
     wearable = WearableServer(clock, host=args.host, port=args.wearable_port)
+
+    # One shared webcam feeds both the live /feed and on-demand Analyze-space.
     camera = None
-    frame_provider = None
-    if args.feed_camera:
+    if args.feed_camera or args.analyze_onnx:
         from .camera_feed import V4l2MjpegCamera
         camera = V4l2MjpegCamera(device=args.feed_device)
         camera.start()
-        time.sleep(2.0)  # let the C270 auto-exposure settle before the feed goes live
-        frame_provider = camera.latest_jpeg
+        time.sleep(2.0)  # let the C270 auto-exposure settle before frames go live
+    frame_provider = camera.latest_jpeg if (args.feed_camera and camera) else None
     app = HttpAppBus(clock, host=args.host, port=args.port, token=args.token,
                      frame_provider=frame_provider)
     alert = _build_alert(args)
-    vision, threaded_vision = _build_vision(args, clock)
+
+    if args.analyze_onnx:
+        from .vision.onnx_pose import OnDemandPoseVision, OnnxPoseModel
+        vision = OnDemandPoseVision(camera, OnnxPoseModel(args.analyze_onnx), clock)
+        threaded_vision = False
+    else:
+        vision, threaded_vision = _build_vision(args, clock)
 
     wearable.start()
     app.start()
