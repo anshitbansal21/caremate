@@ -1,0 +1,24 @@
+# Arduino build output
+build/
+.pio/
+*.elf
+*.hex
+*.bin
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+secrets.h
+credentials.h
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs and captured media
+*.log
+captures/
+recordings/
