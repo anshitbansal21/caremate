@@ -64,9 +64,17 @@ IMU is up on the bench (see Hardware gates).
 
 ## Alert / MCU
 
+- [ ] **Linux↔MCU transport is `Arduino_RouterBridge`, not raw serial.** On the UNO Q
+  the MCU↔Linux channel is the RouterBridge (Bridge/Monitor), *not* `/dev/ttyACM0`
+  pyserial (integration agent's finding). `SerialAlertSink` already takes an
+  injected writer, so we swap only the writer to wrap the RouterBridge Linux-side
+  API — but `run_hub --serial <dev>` assumes pyserial and must be revisited once
+  that API is known. **Coordinate with the integration agent on the bridge's
+  Linux-side read/write handle.**
 - [ ] **MCU serial-protocol parser.** `SerialAlertSink` emits `STATUS <state> <level>`
-  / `LCD <l1>|<l2>`; the UNO Q controller `.ino` doesn't parse them yet. Wire the
-  buzzer / red LED / 16×2 LCD to reflect those messages.
+  / `LCD <l1>|<l2>`; the UNO Q controller `.ino` doesn't parse them yet (it now
+  does `Bridge.begin()`). Parse those messages off the bridge and drive the
+  buzzer / red LED / 16×2 LCD.
 - [ ] **Assign the hub-alert-wiring owner.** LCD/buzzer/red-LED wiring on the UNO Q
   still has no owner (open in CLAUDE.md).
 
@@ -77,7 +85,12 @@ IMU is up on the bench (see Hardware gates).
   FQBN needs `CDCOnBoot=cdc` or `Serial` output is dropped. *(Wearable agent.)*
 - [ ] **Wearable battery + power/continuity checks.** *Owner: Ryaan.*
 - [ ] **UNO Q camera bring-up** → unblocks `run_hub --camera`. *Gate: hardware agent.*
-- [ ] **UNO Q ↔ STM32 serial** → unblocks `run_hub --serial` for real MCU alerts.
+- [~] **UNO Q MCU↔Linux bridge** in progress: controller `.ino` now calls
+  `Bridge.begin()` (`Arduino_RouterBridge`). *(Integration agent.)* → unblocks real
+  MCU alerts once the Linux-side bridge writer is wired into `SerialAlertSink`.
+- [ ] **Capture UNO Q environment setup** (drivers, App Lab, RouterBridge, ultralytics
+  + camera deps) in a `docs/uno-q-setup.md` so `run_hub --camera`/`--serial`
+  prerequisites are reproducible — this work currently lives only on the device.
 
 ## Definition of done (MVP)
 
