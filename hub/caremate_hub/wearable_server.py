@@ -51,6 +51,7 @@ class _Conn:
         self.seen: Set[int] = set()
         self.seen_order: Deque[int] = deque(maxlen=_DEDUP_HISTORY)
         self.last_seen_ms: int = 0
+        self.connected_at_ms: int = 0
 
     def remember(self, seq: int) -> bool:
         """Record ``seq``; return True if it was already seen (a duplicate)."""
@@ -70,12 +71,19 @@ class WearableServer(WearableSource):
         host: str = "0.0.0.0",
         port: int = 9000,
         heartbeat_timeout_ms: int = 6000,
+        reap_timeout_ms: int = 20000,
         logger: Optional[Callable[[str], None]] = None,
     ) -> None:
         self.clock = clock
         self.host = host
         self.port = port
         self.heartbeat_timeout_ms = heartbeat_timeout_ms
+        # Close a connection we haven't heard a line from in this long. On a flaky
+        # link the wearable reconnects (new socket) without cleanly closing the old
+        # one, so dead half-open sockets accumulate; reaping keeps the set clean and
+        # is_online honest. Set well above heartbeat_timeout so a merely-laggy link
+        # isn't dropped.
+        self.reap_timeout_ms = reap_timeout_ms
         self.log = logger or (lambda m: print(f"[wearable-net] {m}"))
 
         self._sel = selectors.DefaultSelector()
@@ -123,9 +131,18 @@ class WearableServer(WearableSource):
             return
         for key, _ in self._sel.select(timeout=0):
             if key.data == "server":
-                self._accept()
+                self._accept(now_ms)
             else:
                 self._read(key.fileobj, now_ms, controller)
+        self._reap(now_ms)
+
+    def _reap(self, now_ms: int) -> None:
+        """Close connections that have gone silent past ``reap_timeout_ms``."""
+        for sock, conn in list(self._conns.items()):
+            idle_since = max(conn.last_seen_ms, conn.connected_at_ms)
+            if now_ms - idle_since > self.reap_timeout_ms:
+                self.log("reaping stale wearable connection")
+                self._drop(sock)
 
     # ------------------------------------------------------------------ #
     # Outbound
@@ -148,7 +165,7 @@ class WearableServer(WearableSource):
     # ------------------------------------------------------------------ #
     # Internals
     # ------------------------------------------------------------------ #
-    def _accept(self) -> None:
+    def _accept(self, now_ms: int = 0) -> None:
         assert self._server is not None
         try:
             sock, addr = self._server.accept()
@@ -157,7 +174,9 @@ class WearableServer(WearableSource):
         sock.setblocking(False)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self._sel.register(sock, selectors.EVENT_READ, data="conn")
-        self._conns[sock] = _Conn(sock)
+        conn = _Conn(sock)
+        conn.connected_at_ms = now_ms  # start the reap grace clock at connect
+        self._conns[sock] = conn
         self.log(f"wearable connected: {addr}")
 
     def _read(self, sock: socket.socket, now_ms: int, controller) -> None:
