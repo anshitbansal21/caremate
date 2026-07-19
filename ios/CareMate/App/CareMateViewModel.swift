@@ -201,20 +201,40 @@ final class CareMateViewModel: ObservableObject {
     }
 
     private func runFrameLoop() async {
-        // Poll GET /frame on a timer rather than consuming the MJPEG /feed stream.
-        // /frame is a plain buffered request (the same path status uses), so it is
-        // reliable through a proxy; multipart/x-mixed-replace over URLSession is not.
+        // Prefer the efficient MJPEG /feed stream (~19fps, one connection) — ideal
+        // on a direct/local connection. If the stream yields no frames (URLSession's
+        // multipart/x-mixed-replace handling is unreliable, especially via a proxy
+        // like ngrok), fall back to polling GET /frame — a plain buffered request on
+        // the same path status uses, so it works wherever status works. This keeps
+        // the feed from ever going empty regardless of the transport.
         var retryNanoseconds: UInt64 = 1_000_000_000
-        let pollIntervalNanoseconds: UInt64 = 150_000_000  // ~6-7 fps: smooth, light
+        let pollIntervalNanoseconds: UInt64 = 100_000_000  // ~10fps fallback
+        var useStreaming = true
         while !Task.isCancelled {
             do {
                 guard let client else { return }
-                let frame = try await client.frame()
-                try Task.checkCancellation()
-                frameData = frame
-                feedError = nil
-                retryNanoseconds = 1_000_000_000
-                try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+                if useStreaming {
+                    var receivedAny = false
+                    let stream = try await client.annotatedFrames()
+                    for try await frame in stream {
+                        try Task.checkCancellation()
+                        frameData = frame
+                        feedError = nil
+                        receivedAny = true
+                        retryNanoseconds = 1_000_000_000
+                    }
+                    // Stream ended. If it never produced a frame, the transport
+                    // can't deliver MJPEG here — switch to polling permanently.
+                    if !receivedAny { useStreaming = false }
+                    throw APIClientError.streamEnded
+                } else {
+                    let frame = try await client.frame()
+                    try Task.checkCancellation()
+                    frameData = frame
+                    feedError = nil
+                    retryNanoseconds = 1_000_000_000
+                    try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
+                }
             } catch is CancellationError {
                 return
             } catch {
