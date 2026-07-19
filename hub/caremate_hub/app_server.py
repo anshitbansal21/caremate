@@ -244,6 +244,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._serve_events()
         if path == "/feed":
             return self._serve_feed()
+        if path == "/frame":
+            return self._serve_frame()
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):  # noqa: N802
@@ -296,6 +298,26 @@ class _Handler(BaseHTTPRequestHandler):
     def _sse(self, obj: dict) -> None:
         self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
         self.wfile.flush()
+
+    def _serve_frame(self) -> None:
+        """Single latest JPEG (image/jpeg).
+
+        Native clients (iOS ``AsyncImage``, Android, plain ``<img>``) that can't
+        decode a ``multipart/x-mixed-replace`` MJPEG stream can poll this on a
+        timer for a live-ish feed with zero stream parsing. ``/feed`` remains the
+        continuous MJPEG for browsers/webviews that render it natively.
+        """
+        provider = self.bus.frame_provider
+        jpg = provider() if provider is not None else None
+        if jpg is None:
+            return self._json(503, {"error": "no camera frame available"})
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(jpg)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(jpg)
 
     def _serve_feed(self) -> None:
         provider = self.bus.frame_provider
