@@ -21,9 +21,9 @@ IMU is up on the bench (see Hardware gates).
 - [ ] **`YoloPoseBackend` on real hardware.** Written but untested without a camera.
   Validate on a laptop webcam, then int8-export via App Lab / Edge Impulse and
   reduce `imgsz` for speed on the UNO Q.
-- [ ] **`/feed` annotated-JPEG provider.** `HttpAppBus` serves MJPEG but returns 503
-  until `PoseVisionSource` exposes its latest annotated frame as JPEG bytes and
-  that callable is passed as `frame_provider`. Lights up the app's live feed.
+- [ ] **`/feed` annotated-JPEG provider.** `run_hub --feed-camera` now supplies a
+  live unannotated C270 MJPEG feed. `PoseVisionSource` still needs to expose its
+  latest annotated frame as JPEG bytes and pass that callable as `frame_provider`.
 - [ ] **`ON_BED` vs floor-lying.** The classifier emits `LYING`; distinguishing a
   bed from the floor needs a configured bed region (scene ROI) layered on top.
 

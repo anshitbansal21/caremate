@@ -15,7 +15,8 @@ The hub **publishes**, the app **subscribes**. Two traffic shapes → two mechan
 | Status + fall-alert push | hub → app | **SSE** (one long-lived HTTP connection) |
 | Analyze space / acknowledge / cancel | app → hub | **REST POST** |
 | Current status | app → hub | **REST GET** |
-| Annotated camera feed | hub → app | **MJPEG** (`multipart/x-mixed-replace`) |
+| Camera feed | hub → app | **MJPEG** `/feed` (`multipart/x-mixed-replace`) |
+| One-frame fallback | hub → app | **JPEG** `/frame` (`image/jpeg`) |
 
 It is a **long-lived HTTP connection (SSE)** for real-time events — *not* a raw TCP
 socket. This keeps auth headers, one server, and one port for everything, and it's
@@ -121,10 +122,19 @@ wearable latch. Acknowledgement is recorded separately from fall confirmation.
 `202 {"accepted":"cancel"}`. Safe to wire to a “test” button — this is the
 cancel/test mechanism that must exist before real recipients are involved.
 
-### `GET /feed` — annotated camera feed
-`multipart/x-mixed-replace; boundary=frame` MJPEG stream. Returns
-`503 {"error":"no camera feed wired"}` until the vision layer's annotated-frame
-provider is connected. Show it only while capture is active (consent/visibility).
+### `GET /feed` — camera feed
+`multipart/x-mixed-replace; boundary=frame` MJPEG stream. On the demo hotspot,
+the iOS app consumes this endpoint directly using authenticated native
+`URLSession`. `run_hub --feed-camera` wires the C270 provider; without a frame
+provider it returns `503 {"error":"no camera feed wired"}`. The current
+dependency-free provider is live but unannotated; pose annotations remain pending.
+Show it only while capture is active (consent/visibility).
+
+### `GET /frame` — one-frame fallback
+Returns the latest complete JPEG as `image/jpeg`, or
+`503 {"error":"no camera frame available"}` before the provider has produced a
+frame. Normal Live View prefers `/feed` and automatically polls `/frame` only if
+MJPEG cannot deliver frames; **Load one frame** also uses this bounded endpoint.
 
 ## iOS client sketch
 
@@ -133,10 +143,12 @@ provider is connected. Show it only while capture is active (consent/visibility)
 - Optionally summarize that JSON on-device for presentation; keep the raw hub
   observation and recommendation visible and authoritative.
 - POST `/ack` and `/cancel` for the alert and test buttons.
-- `AsyncImage`/`URLSession` MJPEG reader (or an `<img>`-style view) for `/feed`.
+- Native `URLSession` MJPEG reader for `/feed`; `/frame` polling is the degraded
+  fallback and also supports the manual one-frame action.
 
 ## Not yet wired (hub side)
 
-- `/feed` needs the annotated-JPEG provider from `PoseVisionSource` (follow-up).
+- `/feed` is currently unannotated; it still needs the annotated-JPEG provider
+  from `PoseVisionSource` (follow-up).
 - TLS + hub-side per-user token management remain unwired (the MVP hub uses one
   shared bearer token on the LAN; the iOS client stores that token in Keychain).

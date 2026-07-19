@@ -23,9 +23,11 @@ When the wearable sends a candidate-fall event, Aryan's control system forwards 
 The implementation uses Aryan's `HttpAppBus` and the contract in
 `docs/app-api.md` as the single hub-to-phone boundary. Status, fall alerts, and
 analysis results are pushed over one authenticated long-lived SSE request;
-Analyze space, acknowledgement, and cancellation use bounded REST requests; the
-annotated camera view uses a separate MJPEG connection. The iOS app reconnects
-both streams with bounded backoff and fetches `/status` before subscribing.
+Analyze space, acknowledgement, and cancellation use bounded REST requests; on
+the shared demo hotspot the camera view prefers a separate MJPEG `/feed`
+connection. The iOS app reconnects both streams with bounded backoff, fetches
+`/status` before subscribing, and falls back to single-JPEG `/frame` polling if
+MJPEG cannot deliver frames.
 
 Analyze space captures on the hub and runs through the provider-neutral
 `SpaceAnalyzer`. The phone receives the validated structured response and may
@@ -34,8 +36,9 @@ fields as a concise presentation paragraph. No image or provider credential is
 passed to the phone model, and its paragraph cannot change the hub's model
 recommendation, fusion state, or alert decision. Devices without an available
 on-device model use a deterministic summary of the same fields.
-`/feed` remains explicitly unavailable until the pose vision source exposes an
-annotated-JPEG provider.
+`run_hub --feed-camera` currently supplies an unannotated C270 MJPEG feed. The
+pose vision source still needs to expose annotated JPEGs before the feed can be
+described as annotated activity output.
 
 ## On-demand analysis flow
 
