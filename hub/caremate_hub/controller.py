@@ -14,6 +14,7 @@ Design invariants:
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Callable, Optional
 
 from .clock import Clock
@@ -26,6 +27,10 @@ from .events import (
     VisionEvidence,
 )
 from .fusion import VisionVerdict, classify_vision
+
+# How recently a wearable fall candidate still counts as corroboration for an
+# Analyze-space request (advisory weighting only, not the fall decision window).
+_WEARABLE_RECENCY_MS = 30_000
 from .interfaces import AlertSink, AppBus, VisionSource
 
 
@@ -38,6 +43,7 @@ class MainController:
         clock: Clock,
         config: Optional[FusionConfig] = None,
         logger: Optional[Callable[[str], None]] = None,
+        wearable_online: Optional[Callable[[int], bool]] = None,
     ) -> None:
         self.alert = alert_sink
         self.app = app_bus
@@ -45,6 +51,9 @@ class MainController:
         self.clock = clock
         self.cfg = config or FusionConfig()
         self.log = logger or (lambda m: print(f"[controller] {m}"))
+        # Optional wearable-liveness probe (WearableServer.is_online); lets an
+        # Analyze-space response say whether the IMU corroboration is even available.
+        self._wearable_online = wearable_online
 
         self.state: FusionState = FusionState.READY
         self._candidate: Optional[CandidateFall] = None
@@ -52,6 +61,10 @@ class MainController:
         self._confirming_since: Optional[int] = None
         self._latest_vision: Optional[VisionEvidence] = None
         self._analysis_seq = 0
+        # Most recent wearable fall candidate, kept across resets purely to
+        # weight Analyze-space (recency of an IMU fall-like event).
+        self._last_candidate_ms: Optional[int] = None
+        self._last_candidate_conf: float = 0.0
 
     # ------------------------------------------------------------------ #
     # Inbound from sources
@@ -60,6 +73,9 @@ class MainController:
         if cf.confidence < self.cfg.min_candidate_confidence:
             self.log(f"candidate below threshold ({cf.confidence:.2f}); ignoring")
             return
+        # Remember the last IMU fall-like event (survives resets) to weight Analyze-space.
+        self._last_candidate_ms = cf.received_at_ms
+        self._last_candidate_conf = cf.confidence
         # Don't disturb an in-progress confirmed alert; a fresh candidate
         # otherwise (re)opens the awaiting-vision window.
         if self.state in (FusionState.ALERTING, FusionState.CONFIRMED_FALL):
@@ -99,10 +115,66 @@ class MainController:
                 alert_recommendation="check",
                 uncertain=True,
             )
+        analysis = self._weight_with_wearable(analysis, now)
         # Recorded separately from fall confirmation; no raw frame stored.
         self.app.publish_analysis(analysis)
         self._consider_analysis(analysis)
         return analysis
+
+    def _weight_with_wearable(self, a: SpaceAnalysis, now: int) -> SpaceAnalysis:
+        """Fold the wearable IMU evidence into a vision-derived analysis.
+
+        The IMU does not classify posture — it detects fall-like events (impact →
+        orientation change → stillness) and provides liveness. So it *corroborates*
+        and *re-weights* the vision assessment; it never dictates person_state, and
+        the ``alert_recommendation`` stays what the deterministic vision rule set
+        (advisory, never the sole authority — CLAUDE.md).
+        """
+        online = bool(self._wearable_online(now)) if self._wearable_online else False
+        recent = (
+            self._last_candidate_ms is not None
+            and 0 <= now - self._last_candidate_ms <= _WEARABLE_RECENCY_MS
+        )
+        wconf = self._last_candidate_conf if recent else 0.0
+        lying = a.person_state == "lying"
+
+        risks = list(a.risk_observations)
+        combined = a.activity_confidence
+        method = a.method
+        summary = a.room_summary
+
+        if recent:
+            secs = (now - self._last_candidate_ms) // 1000
+            if lying:
+                combined = min(1.0, 0.5 * a.activity_confidence + 0.5 * wconf + 0.2)
+                risks.append(
+                    f"wearable detected a fall-like event ~{secs}s ago (impact + "
+                    f"stillness), corroborating the horizontal posture")
+                summary += " Wearable corroborates a possible fall (recent impact + stillness)."
+            else:
+                risks.append(
+                    f"wearable detected a fall-like event ~{secs}s ago, but the person "
+                    f"does not appear to be lying — worth a check")
+            method = (method + "; " if method else "") + \
+                "wearable IMU heuristic (impact→orientation→stillness), corroborating"
+        elif not online:
+            combined = max(0.0, a.activity_confidence - 0.2)
+            risks.append("wearable offline — vision-only assessment, reduced confidence")
+            summary += " Wearable is offline, so this is a vision-only assessment."
+            method = (method + "; " if method else "") + "wearable IMU unavailable"
+        else:
+            method = (method + "; " if method else "") + \
+                "wearable IMU online, no recent fall signal"
+
+        return dataclasses.replace(
+            a,
+            room_summary=summary,
+            risk_observations=risks,
+            wearable_online=online,
+            recent_fall_signal=recent,
+            combined_confidence=round(combined, 2),
+            method=method,
+        )
 
     def acknowledge(self) -> None:
         """App acknowledges an active alert. Recorded separately from confirmation."""

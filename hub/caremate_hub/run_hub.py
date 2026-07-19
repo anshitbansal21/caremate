@@ -144,7 +144,8 @@ def main() -> None:
 
     wearable.start()
     app.start()
-    controller = MainController(alert, app, vision, clock)
+    controller = MainController(alert, app, vision, clock,
+                               wearable_online=wearable.is_online)
 
     _banner(args, app, wearable)
 

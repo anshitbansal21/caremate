@@ -92,4 +92,11 @@ class SpaceAnalysis:
     risk_observations: List[str]
     alert_recommendation: str   # "alert" | "check" | "none"
     uncertain: bool
+    # --- enrichment (all optional / additive; safe for older clients) ---
+    people_count: int = 0            # people detected in the frame (vision)
+    activity_confidence: float = 0.0  # pose classifier confidence for person_state
+    wearable_online: bool = False     # was the wearable heard from recently
+    recent_fall_signal: bool = False  # wearable fired a fall candidate recently (IMU)
+    combined_confidence: float = 0.0  # fused vision + wearable confidence (advisory)
+    method: str = ""                  # which algorithms produced this assessment
     version: int = 1

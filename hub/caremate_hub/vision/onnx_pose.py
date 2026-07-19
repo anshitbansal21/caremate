@@ -18,6 +18,7 @@ rest of the package stays dependency-free.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 from typing import List, Optional
 
@@ -163,12 +164,14 @@ class OnDemandPoseVision(VisionSource):
         except Exception:
             return self._unavailable(request_id)
 
+        people_count = len(frame.poses)
         pose = self._primary(frame.poses)
         if pose is None:
             evidence = VisionEvidence(
                 at_ms=now_ms, activity=Activity.NOT_VISIBLE,
                 motion=False, confidence=0.0, available=False,
             )
+            conf = 0.0
         else:
             activity, conf = classify_activity(pose, moving=False, cfg=self.cfg)
             evidence = VisionEvidence(
@@ -179,7 +182,23 @@ class OnDemandPoseVision(VisionSource):
             request_id=request_id, evidence=evidence,
             pose=pose, image=frame.image, now_ms=now_ms,
         )
-        return self.analyzer.analyze(snapshot)
+        base = self.analyzer.analyze(snapshot)
+
+        # Vision enrichment: real people count + a count-aware summary + the method.
+        who = "person" if people_count == 1 else "people"
+        if people_count == 0:
+            summary = "No person is clearly visible in the current view."
+        else:
+            summary = (f"Detected {people_count} {who} in view. The tracked person "
+                       f"appears {base.person_state}"
+                       f"{'' if evidence.motion else ' and not moving'}.")
+        return dataclasses.replace(
+            base,
+            room_summary=summary,
+            people_count=people_count,
+            activity_confidence=round(conf, 2),
+            method="on-device YOLOv8n-pose keypoints + torso-tilt/leg-ratio activity rule",
+        )
 
     @staticmethod
     def _primary(poses: List[Pose]) -> Optional[Pose]:

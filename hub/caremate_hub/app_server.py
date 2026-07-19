@@ -43,6 +43,26 @@ _SUB_QUEUE_MAX = 64
 _ANALYZE_TIMEOUT_S = 6.0
 
 
+def analysis_to_dict(a: SpaceAnalysis) -> dict:
+    """The Analyze-space wire shape, in one place (used by /analyze and the SSE
+    push). Enrichment fields are additive — older app builds ignore the extras."""
+    return {
+        "request_id": a.request_id,
+        "person_state": a.person_state,
+        "room_summary": a.room_summary,
+        "risk_observations": list(a.risk_observations),
+        "alert_recommendation": a.alert_recommendation,
+        "uncertain": a.uncertain,
+        "captured_at": a.captured_at,
+        "people_count": a.people_count,
+        "activity_confidence": a.activity_confidence,
+        "wearable_online": a.wearable_online,
+        "recent_fall_signal": a.recent_fall_signal,
+        "combined_confidence": a.combined_confidence,
+        "method": a.method,
+    }
+
+
 class HttpAppBus(AppBus):
     def __init__(
         self,
@@ -106,17 +126,7 @@ class HttpAppBus(AppBus):
         self._broadcast({"type": "alert", "detail": detail, **snap})
 
     def publish_analysis(self, analysis: SpaceAnalysis) -> None:
-        msg = {
-            "type": "analysis",
-            "request_id": analysis.request_id,
-            "person_state": analysis.person_state,
-            "room_summary": analysis.room_summary,
-            "risk_observations": list(analysis.risk_observations),
-            "alert_recommendation": analysis.alert_recommendation,
-            "uncertain": analysis.uncertain,
-            "captured_at": analysis.captured_at,
-            "ts": self.clock.now_ms(),
-        }
+        msg = {"type": "analysis", "ts": self.clock.now_ms(), **analysis_to_dict(analysis)}
         with self._lock:
             pending = self._pending.get(analysis.request_id)
             if pending is not None:
@@ -261,15 +271,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(202, {"accepted": "cancel"})
         if path == "/analyze":
             analysis = self.bus.request_analysis_blocking()
-            return self._json(200, {
-                "request_id": analysis.request_id,
-                "person_state": analysis.person_state,
-                "room_summary": analysis.room_summary,
-                "risk_observations": list(analysis.risk_observations),
-                "alert_recommendation": analysis.alert_recommendation,
-                "uncertain": analysis.uncertain,
-                "captured_at": analysis.captured_at,
-            })
+            return self._json(200, analysis_to_dict(analysis))
         return self._json(404, {"error": "not found"})
 
     # -- streaming ------------------------------------------------------ #
