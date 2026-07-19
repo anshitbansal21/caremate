@@ -51,6 +51,8 @@ sensor candidate → awaiting vision → confirmed fall → locally alerting
 
 Correlate evidence inside a configurable time window. If one node is offline or vision is occluded, prefer an explicit `uncertain—check user` state over silently discarding credible sensor evidence. Track fall confirmation, alert delivery, and acknowledgement separately.
 
+The fusion machine and its four seams (`WearableSource`, `VisionSource`, `AlertSink`, `AppBus`) are implemented as the UNO Q Linux-side **main controller** in `hub/caremate_hub/`; see `docs/main-controller.md` for the phased fall-detection split (wearable heuristic → vision confirmation → deterministic decision) and the Linux↔MCU serial protocol.
+
 ## Suggested message contract
 
 Messages between components should be small and versioned. An initial event could contain:

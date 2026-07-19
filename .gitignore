@@ -12,6 +12,13 @@ build/
 secrets.h
 credentials.h
 
+# Python (vision hub)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
 # Editors and operating systems
 .DS_Store
 .idea/
