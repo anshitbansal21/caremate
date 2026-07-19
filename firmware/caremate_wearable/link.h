@@ -56,6 +56,7 @@ class HubLink {
 
   WiFiClient client_;
   bool connected_ = false;
+  bool wifi_up_ = false;
   uint32_t next_reconnect_ms_ = 0;
   uint32_t backoff_ms_ = 0;
   uint32_t last_heartbeat_ms_ = 0;

@@ -41,13 +41,25 @@ void HubLink::manageConnection(uint32_t now_ms) {
   if (connected_ && !client_.connected()) {
     client_.stop();
     connected_ = false;
+    Serial.println(F("[link] hub disconnected"));
     next_reconnect_ms_ = now_ms + backoff_ms_;
   }
 
   if (connected_) return;
 
   // Wait for Wi-Fi association first (non-blocking; the core retries STA).
-  if (WiFi.status() != WL_CONNECTED) return;
+  // Log the up/down transition so association is observable even before the
+  // hub is listening (the TLM "link" column only reflects the TCP layer).
+  const bool wifi_now = (WiFi.status() == WL_CONNECTED);
+  if (wifi_now && !wifi_up_) {
+    wifi_up_ = true;
+    Serial.print(F("[link] WiFi connected, IP="));
+    Serial.println(WiFi.localIP());
+  } else if (!wifi_now && wifi_up_) {
+    wifi_up_ = false;
+    Serial.println(F("[link] WiFi lost"));
+  }
+  if (!wifi_now) return;
 
   if (now_ms < next_reconnect_ms_) return;  // honor backoff
 
@@ -67,6 +79,7 @@ void HubLink::manageConnection(uint32_t now_ms) {
 void HubLink::onConnected(uint32_t now_ms) {
   client_.setNoDelay(true);  // low latency: don't Nagle-buffer tiny events
   in_len_ = 0;
+  Serial.println(F("[link] TCP connected to hub"));
 
   // Announce a fresh boot/connection so the hub can reset any stale wearable
   // state (an uptime reset means we rebooted).
