@@ -66,7 +66,10 @@ private struct OverviewScreen: View {
                         QuickActions(model: model, selectedTab: $selectedTab)
 
                         if let analysis = model.analysis {
-                            CompactAnalysisCard(analysis: analysis) {
+                            CompactAnalysisCard(
+                                analysis: analysis,
+                                summary: model.analysisSummary?.paragraph
+                            ) {
                                 selectedTab = .live
                             }
                         }
@@ -284,7 +287,11 @@ private struct LiveViewScreen: View {
                     AnalyzeActionCard(model: model)
 
                     if let analysis = model.analysis {
-                        AnalysisResultCard(analysis: analysis)
+                        AnalysisResultCard(
+                            analysis: analysis,
+                            summary: model.analysisSummary,
+                            isGeneratingSummary: model.isGeneratingSummary
+                        )
                     }
 
                     PrivacyNotice()
@@ -418,6 +425,7 @@ private struct AnalyzeActionCard: View {
 
 private struct CompactAnalysisCard: View {
     let analysis: SpaceAnalysis
+    let summary: String?
     let showDetails: () -> Void
 
     var body: some View {
@@ -432,7 +440,7 @@ private struct CompactAnalysisCard: View {
                         Text("Latest analysis")
                             .font(.headline)
                             .foregroundStyle(.primary)
-                        Text(analysis.roomSummary)
+                        Text(summary ?? analysis.roomSummary)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
@@ -450,6 +458,8 @@ private struct CompactAnalysisCard: View {
 
 private struct AnalysisResultCard: View {
     let analysis: SpaceAnalysis
+    let summary: AnalysisPresentationSummary?
+    let isGeneratingSummary: Bool
 
     var body: some View {
         CareCard {
@@ -481,9 +491,42 @@ private struct AnalysisResultCard: View {
                         .foregroundStyle(CareMateTheme.accent)
                 }
 
-                Text(analysis.roomSummary)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 8) {
+                    if isGeneratingSummary {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Generating a summary on this iPhone…")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if let summary {
+                        Text(summary.paragraph)
+                            .font(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Label(
+                            summary.source == .foundationModel
+                                ? "Generated on this iPhone from hub observations"
+                                : "Apple Intelligence unavailable — using the hub summary",
+                            systemImage: summary.source == .foundationModel
+                                ? "apple.intelligence"
+                                : "iphone"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("HUB OBSERVATION")
+                        .font(.caption.weight(.bold))
+                        .tracking(0.8)
+                        .foregroundStyle(.secondary)
+                    Text(analysis.roomSummary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 if !analysis.riskObservations.isEmpty {
                     Divider()

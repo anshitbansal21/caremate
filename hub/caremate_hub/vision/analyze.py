@@ -21,6 +21,9 @@ from typing import Callable, Optional
 from ..events import Activity, SpaceAnalysis, VisionEvidence
 
 _VALID_RECS = ("alert", "check", "none")
+_VALID_STATES = (
+    "on_bed", "standing", "sitting", "lying", "walking", "not_visible", "uncertain",
+)
 
 
 @dataclass
@@ -111,14 +114,22 @@ class VlmSpaceAnalyzer(SpaceAnalyzer):
         if not isinstance(risks, list):
             risks = []
 
+        state = raw.get("person_state")
+        if state not in _VALID_STATES:
+            state = "uncertain"
+
+        summary = str(raw.get("room_summary", ""))[:500]
+        if not summary:
+            summary = "Analysis unavailable."
+
         return SpaceAnalysis(
             request_id=request_id,
             captured_at=str(raw.get("captured_at", "")),
-            person_state=str(raw.get("person_state", "uncertain")),
-            room_summary=str(raw.get("room_summary", "")),
+            person_state=state,
+            room_summary=summary,
             risk_observations=[str(r) for r in risks][:10],
             alert_recommendation=rec,
-            uncertain=bool(raw.get("uncertain", False)),
+            uncertain=bool(raw.get("uncertain", False)) or state == "uncertain",
         )
 
 

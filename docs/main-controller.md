@@ -141,9 +141,11 @@ All cited fall-detection repos and the 17 FPS figure are research-grade / a sing
 measured config — bench-confirm real pose FPS on your 2 GB board with the C270
 before locking the live-feed UX to a frame rate.
 
-## Not yet implemented (deliberately)
+## Integration status
 
-Real `VisionSource` (on-device pose + Analyze-space adapter), real `WearableSource`
-transport, real `AppBus` server, and the MCU-side protocol parser. The scaffold
-mocks all four so the two demo-script scenarios run headless today; each is a
-drop-in replacement behind its interface.
+The repository now contains real `PoseVisionSource`, `WearableServer`, and
+`HttpAppBus` implementations as well as their mocks. They are tested separately,
+but no production UNO Q runner currently composes all three with the controller.
+The annotated-frame provider and MCU-side serial protocol parser also remain
+unwired. The headless demo therefore still uses mocks, and the live wearable
+runner still uses a bench-only vision stub.

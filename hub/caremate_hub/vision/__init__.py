@@ -7,6 +7,7 @@ so importing this package never requires ultralytics/opencv.
 
 from .activity import MotionTracker, classify_activity
 from .analyze import LocalSummaryAnalyzer, Snapshot, SpaceAnalyzer, VlmSpaceAnalyzer
+from .ollama_adapter import OllamaVisionInference
 from .backends import FakePoseBackend, Frame, Pose, PoseBackend
 from .config import VisionConfig
 from .pose_vision_source import PoseVisionSource
@@ -23,5 +24,6 @@ __all__ = [
     "SpaceAnalyzer",
     "LocalSummaryAnalyzer",
     "VlmSpaceAnalyzer",
+    "OllamaVisionInference",
     "Snapshot",
 ]

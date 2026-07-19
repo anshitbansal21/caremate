@@ -8,6 +8,15 @@ private enum FakeError: LocalizedError, Sendable {
     var errorDescription: String? { "Network unavailable" }
 }
 
+private struct FakeSummarizer: AnalysisSummarizing {
+    func summarize(_ analysis: SpaceAnalysis) async -> AnalysisPresentationSummary {
+        AnalysisPresentationSummary(
+            paragraph: "The person is standing near the bed, with no visible risks reported.",
+            source: .foundationModel
+        )
+    }
+}
+
 private actor FakeAPI: CareMateAPI {
     private var failStatus = false
     private let currentStatus: HubStatus
@@ -104,7 +113,7 @@ private enum Fixtures {
     {"type":"alert","state":"alerting","level":"confirmed","detail":"vision confirmed","ts":300}
     """#)
 
-    private static func decode<T: Decodable>(_ string: String) -> T {
+    fileprivate static func decode<T: Decodable>(_ string: String) -> T {
         try! JSONDecoder().decode(T.self, from: Data(string.utf8))
     }
 }
@@ -182,11 +191,29 @@ final class CareMateViewModelTests: XCTestCase {
     }
 
     func testAnalyzeUsesHubResultAsCurrentActivity() async {
-        let model = CareMateViewModel(client: FakeAPI())
+        let model = CareMateViewModel(client: FakeAPI(), analysisSummarizer: FakeSummarizer())
         await model.analyzeSpace()
+        while model.isGeneratingSummary { await Task.yield() }
 
         XCTAssertEqual(model.analysis?.requestID, "req-1")
         XCTAssertEqual(model.currentActivity, .standing)
+        XCTAssertEqual(
+            model.analysisSummary?.paragraph,
+            "The person is standing near the bed, with no visible risks reported."
+        )
+        XCTAssertEqual(model.analysisSummary?.source, .foundationModel)
+    }
+
+    func testDeterministicSummaryPreservesUncertaintyWhenModelIsUnavailable() {
+        let uncertain: SpaceAnalysis = Fixtures.decode(#"""
+        {"request_id":"req-2","person_state":"uncertain","room_summary":"Person not clearly visible.","risk_observations":[],"alert_recommendation":"check","uncertain":true,"captured_at":""}
+        """#)
+
+        let summary = OnDeviceAnalysisSummarizer.fallbackSummary(for: uncertain)
+
+        XCTAssertEqual(summary.source, .deterministicFallback)
+        XCTAssertTrue(summary.paragraph.contains("uncertain"))
+        XCTAssertTrue(summary.paragraph.contains("should be checked"))
     }
 
     func testAcknowledgeAndCancelUseAryansGlobalActionRoutes() async {

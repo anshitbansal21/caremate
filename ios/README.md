@@ -15,6 +15,11 @@ swift test
 
 The app subscribes to `/events` over SSE, sends Analyze/acknowledge/cancel REST
 actions, and reads annotated JPEGs from the `/feed` MJPEG stream. The current
-activity card reflects the latest request-scoped **Analyze space** result. Feed
-unavailability is expected until Aryan wires its annotated-frame provider. This
-is a prototype, not a medical device or guaranteed emergency service.
+activity card reflects the latest request-scoped **Analyze space** result. On
+iOS 26 with Apple Intelligence available, the app uses Apple's on-device
+Foundation Models framework to turn the returned structured fields into a
+concise presentation paragraph. It does not send the image to the phone model,
+and generated prose never changes fall confirmation or alerts. iOS 17–25 and
+unsupported devices use a deterministic paragraph. Feed unavailability is
+expected until Aryan wires its annotated-frame provider. This is a prototype,
+not a medical device or guaranteed emergency service.

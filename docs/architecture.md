@@ -28,8 +28,12 @@ annotated camera view uses a separate MJPEG connection. The iOS app reconnects
 both streams with bounded backoff and fetches `/status` before subscribing.
 
 Analyze space captures on the hub and runs through the provider-neutral
-`SpaceAnalyzer`. The phone only renders the validated structured response and
-never owns model credentials or calls a foundation-model provider directly.
+`SpaceAnalyzer`. The phone receives the validated structured response and may
+use Apple's on-device Foundation Models framework to rewrite only those text
+fields as a concise presentation paragraph. No image or provider credential is
+passed to the phone model, and its paragraph cannot change the hub's model
+recommendation, fusion state, or alert decision. Devices without an available
+on-device model use a deterministic summary of the same fields.
 `/feed` remains explicitly unavailable until the pose vision source exposes an
 annotated-JPEG provider.
 
@@ -40,7 +44,9 @@ phone app → Analyze space → fresh frame → local vision + optional multimod
                                            ↓
                       validated person/room observation + alert recommendation
                                            ↓
-                              fusion policy → app status/local alert
+                     fusion policy → app status/local alert
+                                           ↓
+                  iPhone text-only summary (display-only, optional)
 ```
 
 The model returns an `alert`, `check`, or `none` recommendation, but deterministic fusion policy makes the alert decision using model output, wearable evidence, local vision, and recency. A model timeout, refusal, malformed response, occlusion, or provider outage becomes `uncertain/unavailable`; it must not silently suppress credible evidence from another source.

@@ -28,22 +28,28 @@ final class CareMateViewModel: ObservableObject {
     @Published private(set) var status: HubStatus?
     @Published private(set) var activeFall: FallStatus?
     @Published private(set) var analysis: SpaceAnalysis?
+    @Published private(set) var analysisSummary: AnalysisPresentationSummary?
     @Published private(set) var frameData: Data?
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var isAnalyzing = false
+    @Published private(set) var isGeneratingSummary = false
     @Published private(set) var isAcknowledging = false
     @Published private(set) var isCancelling = false
 
     private var client: (any CareMateAPI)?
     private var eventTask: Task<Void, Never>?
     private var frameTask: Task<Void, Never>?
+    private var summaryTask: Task<Void, Never>?
     private let now: @Sendable () -> Date
+    private let analysisSummarizer: any AnalysisSummarizing
 
     init(
         client: (any CareMateAPI)? = nil,
+        analysisSummarizer: any AnalysisSummarizing = OnDeviceAnalysisSummarizer(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.client = client
+        self.analysisSummarizer = analysisSummarizer
         self.now = now
     }
 
@@ -74,16 +80,20 @@ final class CareMateViewModel: ObservableObject {
     func disconnect(clearData: Bool = false) {
         eventTask?.cancel()
         frameTask?.cancel()
+        summaryTask?.cancel()
         eventTask = nil
         frameTask = nil
+        summaryTask = nil
         client = nil
         connectionState = .disconnected
         if clearData {
             status = nil
             activeFall = nil
             analysis = nil
+            analysisSummary = nil
             frameData = nil
             lastUpdated = nil
+            isGeneratingSummary = false
         }
     }
 
@@ -103,8 +113,7 @@ final class CareMateViewModel: ObservableObject {
         isAnalyzing = true
         defer { isAnalyzing = false }
         do {
-            analysis = try await client.analyzeSpace()
-            lastUpdated = now()
+            receiveAnalysis(try await client.analyzeSpace())
         } catch {
             connectionState = .failed(error.localizedDescription)
         }
@@ -215,8 +224,7 @@ final class CareMateViewModel: ObservableObject {
             apply(eventStatus, detail: event.detail)
         }
         if let eventAnalysis = event.analysis {
-            analysis = eventAnalysis
-            lastUpdated = now()
+            receiveAnalysis(eventAnalysis)
         }
     }
 
@@ -234,6 +242,29 @@ final class CareMateViewModel: ObservableObject {
             activeFall = FallStatus(state: fallState, updatedAt: now(), detail: detail)
         } else {
             activeFall = nil
+        }
+    }
+
+    private func receiveAnalysis(_ newAnalysis: SpaceAnalysis) {
+        let isSameRequest = analysis?.requestID == newAnalysis.requestID
+        analysis = newAnalysis
+        lastUpdated = now()
+
+        if isSameRequest, analysisSummary != nil || isGeneratingSummary {
+            return
+        }
+
+        summaryTask?.cancel()
+        analysisSummary = nil
+        isGeneratingSummary = true
+        let summarizer = analysisSummarizer
+        let requestID = newAnalysis.requestID
+        summaryTask = Task { [weak self] in
+            let result = await summarizer.summarize(newAnalysis)
+            guard !Task.isCancelled, let self, self.analysis?.requestID == requestID else { return }
+            self.analysisSummary = result
+            self.isGeneratingSummary = false
+            self.summaryTask = nil
         }
     }
 }

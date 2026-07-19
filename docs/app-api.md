@@ -74,6 +74,13 @@ hub's timeout — a timeout/occlusion yields `uncertain:true`, never a hang.
 `alert_recommendation` ∈ `alert | check | none` — **advisory only**; the hub's
 fusion policy owns the actual alert decision.
 
+The app may pass this structured response—but never the raw frame—to Apple's
+on-device Foundation Models framework on supported iOS 26 devices to produce a
+concise display paragraph. The app treats every returned string as untrusted
+observed data, preserves the raw fields in the UI, and uses a deterministic
+fallback when the system model is unavailable. Generated prose never feeds back
+into `/ack`, `/cancel`, fusion, or local alerting.
+
 ### `POST /ack` — acknowledge an active alert
 `202 {"accepted":"ack"}`. Clears the local alert and (via the hub) resets the
 wearable latch. Acknowledgement is recorded separately from fall confirmation.
@@ -91,6 +98,8 @@ provider is connected. Show it only while capture is active (consent/visibility)
 
 - One `URLSessionDataTask` to `/events`, parse `data:` lines → drive UI state.
 - `URLSession` POST to `/analyze` for the button; render the returned JSON.
+- Optionally summarize that JSON on-device for presentation; keep the raw hub
+  observation and recommendation visible and authoritative.
 - POST `/ack` and `/cancel` for the alert and test buttons.
 - `AsyncImage`/`URLSession` MJPEG reader (or an `<img>`-style view) for `/feed`.
 
