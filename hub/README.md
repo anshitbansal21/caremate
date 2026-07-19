@@ -21,6 +21,24 @@ python3 tests/test_fusion.py # runs the fusion happy/failure-path tests
 
 Pure standard library — no pip install, no camera, no Wi-Fi.
 
+## Run the whole hub (all four seams, one process)
+
+`run_hub` wires the real `WearableServer`, vision, `AlertSink`, and `HttpAppBus`
+into a single cooperative loop. Runs headless by default; flags swap in hardware.
+
+```bash
+cd hub
+python3 -m caremate_hub.run_hub                # hub up, idle scripted vision, mock alerts
+python3 -m caremate_hub.run_hub --demo         # inject a scripted fall after 3 s
+python3 -m caremate_hub.run_hub --camera       # real webcam + YOLOv8n-pose (needs ultralytics + a cam)
+python3 -m caremate_hub.run_hub --serial /dev/ttyACM0   # drive the MCU over serial
+python3 -m caremate_hub.run_hub --demo --seconds 8      # bounded run (smoke test)
+```
+
+The app connects to `http://<hub-ip>:8080` (bearer token printed at startup); the
+ESP32 connects to the wearable TCP port. `--camera` and a connected wearable make
+it fully real. See `docs/app-api.md` for the app contract.
+
 ## The four seams
 
 | Interface | Real implementation | Mock |
