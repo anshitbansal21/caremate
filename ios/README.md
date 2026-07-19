@@ -19,6 +19,16 @@ Run the contract tests with:
 swift test
 ```
 
+## Camera-feed diagnostics
+
+Debug builds log the feed path under the `CameraFeed` category in Xcode's console.
+Filter the console for `CameraFeed`, reproduce the empty feed, tap **Load one
+frame**, and copy the lines from `Opening authenticated MJPEG request` onward.
+The diagnostics include response status/content type, byte and parsed-frame
+counts, JPEG structural-marker presence (`SOI`, `EOI`, `DHT`, `DQT`, `SOF`,
+`SOS`), fallback mode, and UIKit decode failures. They never log the bearer token
+or image contents; still review logs before sharing them.
+
 The app subscribes to `/events` over SSE, sends Analyze/acknowledge/cancel REST
 actions, and reads annotated JPEGs from the `/feed` MJPEG stream. The current
 activity card reflects the latest request-scoped **Analyze space** result. On

@@ -1,5 +1,11 @@
 import SwiftUI
 import UIKit
+import OSLog
+
+private let cameraFeedLogger = Logger(
+    subsystem: "com.caremate.prototype",
+    category: "CameraFeed"
+)
 
 struct ContentView: View {
     @ObservedObject var model: CareMateViewModel
@@ -312,6 +318,7 @@ private struct LiveViewScreen: View {
 
 private struct LiveFeedCard: View {
     @ObservedObject var model: CareMateViewModel
+    @State private var loggedDecodeFailure = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -378,6 +385,22 @@ private struct LiveFeedCard: View {
                 }
             }
             .padding(16)
+        }
+        .onChange(of: model.frameData) { _, data in
+            guard let data else {
+                loggedDecodeFailure = false
+                return
+            }
+            if UIImage(data: data) == nil {
+                if !loggedDecodeFailure {
+                    cameraFeedLogger.error(
+                        "UIKit could not decode camera frame bytes=\(data.count)"
+                    )
+                    loggedDecodeFailure = true
+                }
+            } else {
+                loggedDecodeFailure = false
+            }
         }
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))

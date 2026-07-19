@@ -1,4 +1,29 @@
 import Foundation
+import OSLog
+
+private let cameraFeedLogger = Logger(
+    subsystem: "com.caremate.prototype",
+    category: "CameraFeed"
+)
+
+private struct JPEGMarkerSummary {
+    let hasSOI: Bool
+    let hasEOI: Bool
+    let hasDHT: Bool
+    let hasDQT: Bool
+    let hasSOF: Bool
+    let hasSOS: Bool
+
+    init(_ data: Data) {
+        hasSOI = data.starts(with: [0xff, 0xd8])
+        hasEOI = data.suffix(2).elementsEqual([0xff, 0xd9])
+        hasDHT = data.range(of: Data([0xff, 0xc4])) != nil
+        hasDQT = data.range(of: Data([0xff, 0xdb])) != nil
+        hasSOF = data.range(of: Data([0xff, 0xc0])) != nil
+            || data.range(of: Data([0xff, 0xc2])) != nil
+        hasSOS = data.range(of: Data([0xff, 0xda])) != nil
+    }
+}
 
 public enum APIClientError: LocalizedError, Sendable {
     case invalidConfiguration
@@ -97,6 +122,7 @@ public actor APIClient: CareMateAPI {
         var configuredRequest = request(url: endpoint("feed"), timeout: 30)
         configuredRequest.setValue("multipart/x-mixed-replace", forHTTPHeaderField: "Accept")
         let feedRequest = configuredRequest
+        cameraFeedLogger.info("Opening authenticated MJPEG request path=/feed")
         return MJPEGStream.open(request: feedRequest, maximumJPEGBytes: Self.maximumJPEGBytes)
     }
 
@@ -110,7 +136,15 @@ public actor APIClient: CareMateAPI {
     public func frame() async throws -> Data {
         var frameRequest = request(url: endpoint("frame"), timeout: 15)
         frameRequest.setValue("image/jpeg", forHTTPHeaderField: "Accept")
+        cameraFeedLogger.info("Requesting authenticated single frame path=/frame")
         let (data, response) = try await session.data(for: frameRequest)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        let contentType = (response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Type") ?? "missing"
+        let markers = JPEGMarkerSummary(data)
+        cameraFeedLogger.info(
+            "Single-frame response status=\(status) contentType=\(contentType, privacy: .public) bytes=\(data.count) SOI=\(markers.hasSOI) EOI=\(markers.hasEOI) DHT=\(markers.hasDHT) DQT=\(markers.hasDQT) SOF=\(markers.hasSOF) SOS=\(markers.hasSOS)"
+        )
         try Self.validate(response, contentTypePrefix: "image/jpeg")
         guard !data.isEmpty else { throw APIClientError.invalidResponse }
         return data
@@ -269,6 +303,9 @@ private final class MJPEGStreamDelegate: NSObject, URLSessionDataDelegate, @unch
     private let continuation: AsyncThrowingStream<Data, Error>.Continuation
     private var parser: MJPEGFrameParser
     private var responseAccepted = false
+    private var receivedBytes = 0
+    private var receivedChunks = 0
+    private var emittedFrames = 0
 
     init(
         continuation: AsyncThrowingStream<Data, Error>.Continuation,
@@ -285,10 +322,15 @@ private final class MJPEGStreamDelegate: NSObject, URLSessionDataDelegate, @unch
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
         guard let http = response as? HTTPURLResponse else {
+            cameraFeedLogger.error("MJPEG response was not HTTP")
             continuation.finish(throwing: APIClientError.invalidResponse)
             completionHandler(.cancel)
             return
         }
+        let contentType = http.value(forHTTPHeaderField: "Content-Type") ?? "missing"
+        cameraFeedLogger.info(
+            "MJPEG response status=\(http.statusCode) contentType=\(contentType, privacy: .public)"
+        )
         guard (200 ..< 300).contains(http.statusCode) else {
             continuation.finish(throwing: APIClientError.server(
                 status: http.statusCode,
@@ -297,7 +339,6 @@ private final class MJPEGStreamDelegate: NSObject, URLSessionDataDelegate, @unch
             completionHandler(.cancel)
             return
         }
-        let contentType = http.value(forHTTPHeaderField: "Content-Type") ?? "missing"
         let normalizedContentType = contentType.lowercased()
         // URLSession may expose the outer MJPEG response as multipart or
         // decompose it and deliver each replacement part as image/jpeg.
@@ -312,6 +353,7 @@ private final class MJPEGStreamDelegate: NSObject, URLSessionDataDelegate, @unch
             return
         }
         responseAccepted = true
+        cameraFeedLogger.info("MJPEG response accepted; waiting for JPEG bytes")
         completionHandler(.allow)
     }
 
@@ -321,7 +363,22 @@ private final class MJPEGStreamDelegate: NSObject, URLSessionDataDelegate, @unch
         didReceive data: Data
     ) {
         guard responseAccepted else { return }
-        for frame in parser.append(data) {
+        receivedChunks += 1
+        receivedBytes += data.count
+        let frames = parser.append(data)
+        if receivedChunks <= 3 {
+            cameraFeedLogger.debug(
+                "MJPEG data callback chunk=\(self.receivedChunks) chunkBytes=\(data.count) totalBytes=\(self.receivedBytes) parsedFrames=\(frames.count)"
+            )
+        }
+        for frame in frames {
+            emittedFrames += 1
+            if emittedFrames == 1 || emittedFrames.isMultiple(of: 100) {
+                let markers = JPEGMarkerSummary(frame)
+                cameraFeedLogger.info(
+                    "MJPEG parser emitted frame=\(self.emittedFrames) bytes=\(frame.count) totalStreamBytes=\(self.receivedBytes) SOI=\(markers.hasSOI) EOI=\(markers.hasEOI) DHT=\(markers.hasDHT) DQT=\(markers.hasDQT) SOF=\(markers.hasSOF) SOS=\(markers.hasSOS)"
+                )
+            }
             continuation.yield(frame)
         }
     }
@@ -332,8 +389,14 @@ private final class MJPEGStreamDelegate: NSObject, URLSessionDataDelegate, @unch
         didCompleteWithError error: Error?
     ) {
         if let error {
+            cameraFeedLogger.error(
+                "MJPEG request completed with error=\(error.localizedDescription, privacy: .public) chunks=\(self.receivedChunks) bytes=\(self.receivedBytes) frames=\(self.emittedFrames)"
+            )
             continuation.finish(throwing: error)
         } else {
+            cameraFeedLogger.error(
+                "MJPEG request ended without transport error chunks=\(self.receivedChunks) bytes=\(self.receivedBytes) frames=\(self.emittedFrames)"
+            )
             continuation.finish(throwing: APIClientError.streamEnded)
         }
         session.finishTasksAndInvalidate()

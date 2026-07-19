@@ -1,8 +1,14 @@
 import Foundation
 import Combine
+import OSLog
 #if SWIFT_PACKAGE
 import CareMateCore
 #endif
+
+private let cameraFeedLogger = Logger(
+    subsystem: "com.caremate.prototype",
+    category: "CameraFeed"
+)
 
 @MainActor
 final class CareMateViewModel: ObservableObject {
@@ -172,6 +178,7 @@ final class CareMateViewModel: ObservableObject {
 
     private func startLoops() {
         guard client != nil else { return }
+        cameraFeedLogger.info("Starting event and camera-feed loops")
         eventTask = Task { [weak self] in await self?.runEventLoop() }
         frameTask = Task { [weak self] in await self?.runFrameLoop() }
     }
@@ -210,28 +217,50 @@ final class CareMateViewModel: ObservableObject {
         var retryNanoseconds: UInt64 = 1_000_000_000
         let pollIntervalNanoseconds: UInt64 = 100_000_000  // ~10fps fallback
         var useStreaming = true
+        var streamAttempt = 0
+        var polledFrames = 0
         while !Task.isCancelled {
             do {
                 guard let client else { return }
                 if useStreaming {
                     var receivedAny = false
+                    var receivedFrames = 0
+                    streamAttempt += 1
+                    cameraFeedLogger.info("Starting MJPEG stream attempt=\(streamAttempt)")
                     let stream = try await client.annotatedFrames()
                     for try await frame in stream {
                         try Task.checkCancellation()
                         frameData = frame
                         feedError = nil
                         receivedAny = true
+                        receivedFrames += 1
+                        if receivedFrames == 1 || receivedFrames.isMultiple(of: 100) {
+                            cameraFeedLogger.info(
+                                "Published MJPEG frame=\(receivedFrames) bytes=\(frame.count)"
+                            )
+                        }
                         retryNanoseconds = 1_000_000_000
                     }
                     // Stream ended. If it never produced a frame, the transport
                     // can't deliver MJPEG here — switch to polling permanently.
-                    if !receivedAny { useStreaming = false }
+                    if !receivedAny {
+                        useStreaming = false
+                        cameraFeedLogger.error(
+                            "MJPEG stream ended before its first frame; switching to /frame polling"
+                        )
+                    }
                     throw APIClientError.streamEnded
                 } else {
                     let frame = try await client.frame()
                     try Task.checkCancellation()
                     frameData = frame
                     feedError = nil
+                    polledFrames += 1
+                    if polledFrames == 1 || polledFrames.isMultiple(of: 50) {
+                        cameraFeedLogger.info(
+                            "Published polled frame=\(polledFrames) bytes=\(frame.count)"
+                        )
+                    }
                     retryNanoseconds = 1_000_000_000
                     try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
                 }
@@ -240,6 +269,9 @@ final class CareMateViewModel: ObservableObject {
             } catch {
                 // Preserve the last frame and expose the failure while retrying.
                 feedError = error.localizedDescription
+                cameraFeedLogger.error(
+                    "Camera loop error mode=\(useStreaming ? "mjpeg" : "frame-poll") description=\(error.localizedDescription, privacy: .public) retryNanoseconds=\(retryNanoseconds)"
+                )
                 try? await Task.sleep(nanoseconds: retryNanoseconds)
                 retryNanoseconds = min(retryNanoseconds * 2, 8_000_000_000)
             }
@@ -259,8 +291,10 @@ final class CareMateViewModel: ObservableObject {
 
     func refreshFrameOnce() async throws {
         guard let client else { throw APIClientError.invalidConfiguration }
+        cameraFeedLogger.info("Manual single-frame load started")
         frameData = try await client.frame()
         feedError = nil
+        cameraFeedLogger.info("Manual single-frame load published bytes=\(self.frameData?.count ?? 0)")
     }
 
     func apply(_ event: HubEvent) {
