@@ -25,7 +25,7 @@ Ryaan owns the wearable's physical build — soldering the battery and wiring th
 | LCD | TBD | TBD | TBD | Confirm parallel vs I²C backpack |
 | Red alert LED | Digital output | TBD | TBD | Require a series resistor; default to 330 Ω for initial tests |
 | C270 webcam | USB | USB | TBD | Connect to the UNO Q Linux side; confirm camera and microphone permissions |
-| Modulino Movement sensor | TBD | TBD | TBD | Connect to the Glyph C6; confirm exact interface and library |
+| Modulino Movement sensor | I2C (SDA/SCL) | GPIO4 (SDA) / GPIO5 (SCL) | 3.3 V | Glyph C6 (PCB Cupid) GLINK/Qwiic connector; confirmed via bench I2C scan (device at 0x6A, LSM6DSOX default address). Not the generic esp32c6 board default (23/22) — `Wire.begin(4, 5)` must run before `Modulino.begin()`. |
 
 ## Before powering hardware
 
