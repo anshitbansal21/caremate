@@ -22,16 +22,18 @@ final class CareMateViewModel: ObservableObject {
         }
     }
 
-    @Published var serverAddress = "http://caremate.local:8080"
-    @Published var accessToken = ""
+    @Published var serverAddress: String
+    @Published var accessToken: String
     @Published private(set) var connectionState = ConnectionState.disconnected
     @Published private(set) var status: HubStatus?
     @Published private(set) var activeFall: FallStatus?
     @Published private(set) var analysis: SpaceAnalysis?
     @Published private(set) var analysisSummary: AnalysisPresentationSummary?
     @Published private(set) var frameData: Data?
+    @Published private(set) var feedError: String?
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var isAnalyzing = false
+    @Published private(set) var isLoadingSingleFrame = false
     @Published private(set) var isGeneratingSummary = false
     @Published private(set) var isAcknowledging = false
     @Published private(set) var isCancelling = false
@@ -42,14 +44,20 @@ final class CareMateViewModel: ObservableObject {
     private var summaryTask: Task<Void, Never>?
     private let now: @Sendable () -> Date
     private let analysisSummarizer: any AnalysisSummarizing
+    private let connectionSettingsStore: any ConnectionSettingsStoring
 
     init(
         client: (any CareMateAPI)? = nil,
         analysisSummarizer: any AnalysisSummarizing = OnDeviceAnalysisSummarizer(),
+        connectionSettingsStore: any ConnectionSettingsStoring = ConnectionSettingsStore(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
+        let settings = connectionSettingsStore.load()
+        serverAddress = settings.serverAddress
+        accessToken = settings.accessToken
         self.client = client
         self.analysisSummarizer = analysisSummarizer
+        self.connectionSettingsStore = connectionSettingsStore
         self.now = now
     }
 
@@ -68,7 +76,11 @@ final class CareMateViewModel: ObservableObject {
             return
         }
         do {
-            client = try APIClient(baseURL: url, token: accessToken)
+            let configuredClient = try APIClient(baseURL: url, token: accessToken)
+            try connectionSettingsStore.save(
+                ConnectionSettings(serverAddress: serverAddress, accessToken: accessToken)
+            )
+            client = configuredClient
         } catch {
             connectionState = .failed(error.localizedDescription)
             return
@@ -92,6 +104,7 @@ final class CareMateViewModel: ObservableObject {
             analysis = nil
             analysisSummary = nil
             frameData = nil
+            feedError = nil
             lastUpdated = nil
             isGeneratingSummary = false
         }
@@ -116,6 +129,18 @@ final class CareMateViewModel: ObservableObject {
             receiveAnalysis(try await client.analyzeSpace())
         } catch {
             connectionState = .failed(error.localizedDescription)
+        }
+    }
+
+    func loadSingleFrame() async {
+        guard client != nil, !isLoadingSingleFrame else { return }
+        isLoadingSingleFrame = true
+        defer { isLoadingSingleFrame = false }
+        do {
+            try await refreshFrameOnce()
+            feedError = nil
+        } catch {
+            feedError = error.localizedDescription
         }
     }
 
@@ -184,14 +209,15 @@ final class CareMateViewModel: ObservableObject {
                 for try await frame in stream {
                     try Task.checkCancellation()
                     frameData = frame
+                    feedError = nil
                     retryNanoseconds = 1_000_000_000
                 }
                 throw APIClientError.streamEnded
             } catch is CancellationError {
                 return
             } catch {
-                // `/feed` is allowed to return 503 until Aryan wires the frame provider.
-                // Preserve the last valid frame and retry without failing the event stream.
+                // Preserve the last frame and expose the failure while retrying.
+                feedError = error.localizedDescription
                 try? await Task.sleep(nanoseconds: retryNanoseconds)
                 retryNanoseconds = min(retryNanoseconds * 2, 8_000_000_000)
             }
@@ -214,6 +240,7 @@ final class CareMateViewModel: ObservableObject {
         let stream = try await client.annotatedFrames()
         for try await frame in stream {
             frameData = frame
+            feedError = nil
             return
         }
         throw APIClientError.streamEnded

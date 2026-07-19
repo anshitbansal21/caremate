@@ -96,54 +96,7 @@ public actor APIClient: CareMateAPI {
         var configuredRequest = request(url: endpoint("feed"), timeout: 30)
         configuredRequest.setValue("multipart/x-mixed-replace", forHTTPHeaderField: "Accept")
         let feedRequest = configuredRequest
-        let session = session
-
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let (bytes, response) = try await session.bytes(for: feedRequest)
-                    try Self.validate(response, contentTypePrefix: "multipart/x-mixed-replace")
-
-                    var previous: UInt8?
-                    var frame = Data()
-                    var capturing = false
-
-                    for try await byte in bytes {
-                        try Task.checkCancellation()
-                        if !capturing {
-                            if previous == 0xff, byte == 0xd8 {
-                                frame = Data([0xff, 0xd8])
-                                capturing = true
-                                previous = nil
-                            } else {
-                                previous = byte
-                            }
-                            continue
-                        }
-
-                        frame.append(byte)
-                        if frame.count > Self.maximumJPEGBytes {
-                            frame.removeAll(keepingCapacity: false)
-                            capturing = false
-                            previous = nil
-                            continue
-                        }
-                        if previous == 0xff, byte == 0xd9 {
-                            continuation.yield(frame)
-                            frame.removeAll(keepingCapacity: true)
-                            capturing = false
-                            previous = nil
-                        } else {
-                            previous = byte
-                        }
-                    }
-                    continuation.finish(throwing: APIClientError.streamEnded)
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        return MJPEGStream.open(request: feedRequest, maximumJPEGBytes: Self.maximumJPEGBytes)
     }
 
     private func get<T: Decodable>(
@@ -169,8 +122,15 @@ public actor APIClient: CareMateAPI {
     }
 
     private func request(url: URL, timeout: TimeInterval) -> URLRequest {
+        Self.configuredRequest(url: url, token: token, timeout: timeout)
+    }
+
+    static func configuredRequest(url: URL, token: String, timeout: TimeInterval) -> URLRequest {
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Required by ngrok's free tunnel. Harmless when talking directly to
+        // the hub or through a tunnel that does not use an interstitial.
+        request.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         return request
     }
@@ -213,5 +173,152 @@ public actor APIClient: CareMateAPI {
         let message = (try? JSONDecoder().decode(HubErrorEnvelope.self, from: data))?.error
             ?? "The hub returned HTTP \(status)."
         return .server(status: status, message: message)
+    }
+}
+
+struct MJPEGFrameParser: Sendable {
+    private static let startMarker = Data([0xff, 0xd8])
+    private static let endMarker = Data([0xff, 0xd9])
+
+    private var buffer = Data()
+    private let maximumJPEGBytes: Int
+
+    init(maximumJPEGBytes: Int = 10 * 1024 * 1024) {
+        self.maximumJPEGBytes = maximumJPEGBytes
+    }
+
+    mutating func append(_ data: Data) -> [Data] {
+        buffer.append(data)
+        var frames: [Data] = []
+
+        while let start = buffer.range(of: Self.startMarker)?.lowerBound {
+            if start > buffer.startIndex {
+                buffer.removeSubrange(buffer.startIndex ..< start)
+            }
+            guard buffer.count <= maximumJPEGBytes else {
+                buffer.removeAll(keepingCapacity: true)
+                return frames
+            }
+            guard let end = buffer.range(
+                of: Self.endMarker,
+                options: [],
+                in: buffer.index(buffer.startIndex, offsetBy: 2) ..< buffer.endIndex
+            ) else {
+                return frames
+            }
+
+            let frameEnd = end.upperBound
+            frames.append(Data(buffer[buffer.startIndex ..< frameEnd]))
+            buffer.removeSubrange(buffer.startIndex ..< frameEnd)
+        }
+
+        // Keep a trailing 0xff because the JPEG start marker may be split
+        // between URLSession data callbacks; discard unrelated multipart text.
+        if buffer.count > 1 {
+            buffer = buffer.last == 0xff ? Data([0xff]) : Data()
+        }
+        return frames
+    }
+}
+
+private enum MJPEGStream {
+    static func open(
+        request: URLRequest,
+        maximumJPEGBytes: Int
+    ) -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { continuation in
+            let delegate = MJPEGStreamDelegate(
+                continuation: continuation,
+                maximumJPEGBytes: maximumJPEGBytes
+            )
+            let queue = OperationQueue()
+            queue.maxConcurrentOperationCount = 1
+            let session = URLSession(
+                configuration: .ephemeral,
+                delegate: delegate,
+                delegateQueue: queue
+            )
+            let task = session.dataTask(with: request)
+            continuation.onTermination = { _ in
+                task.cancel()
+                session.invalidateAndCancel()
+            }
+            task.resume()
+        }
+    }
+}
+
+private final class MJPEGStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let continuation: AsyncThrowingStream<Data, Error>.Continuation
+    private var parser: MJPEGFrameParser
+    private var responseAccepted = false
+
+    init(
+        continuation: AsyncThrowingStream<Data, Error>.Continuation,
+        maximumJPEGBytes: Int
+    ) {
+        self.continuation = continuation
+        parser = MJPEGFrameParser(maximumJPEGBytes: maximumJPEGBytes)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let http = response as? HTTPURLResponse else {
+            continuation.finish(throwing: APIClientError.invalidResponse)
+            completionHandler(.cancel)
+            return
+        }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            continuation.finish(throwing: APIClientError.server(
+                status: http.statusCode,
+                message: "The hub returned HTTP \(http.statusCode) for the camera feed."
+            ))
+            completionHandler(.cancel)
+            return
+        }
+        let contentType = http.value(forHTTPHeaderField: "Content-Type") ?? "missing"
+        let normalizedContentType = contentType.lowercased()
+        // URLSession may expose the outer MJPEG response as multipart or
+        // decompose it and deliver each replacement part as image/jpeg.
+        guard normalizedContentType.hasPrefix("multipart/x-mixed-replace")
+                || normalizedContentType.hasPrefix("image/jpeg")
+        else {
+            continuation.finish(throwing: APIClientError.server(
+                status: http.statusCode,
+                message: "The camera feed returned an unexpected content type: \(contentType)."
+            ))
+            completionHandler(.cancel)
+            return
+        }
+        responseAccepted = true
+        completionHandler(.allow)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive data: Data
+    ) {
+        guard responseAccepted else { return }
+        for frame in parser.append(data) {
+            continuation.yield(frame)
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        if let error {
+            continuation.finish(throwing: error)
+        } else {
+            continuation.finish(throwing: APIClientError.streamEnded)
+        }
+        session.finishTasksAndInvalidate()
     }
 }

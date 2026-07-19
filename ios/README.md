@@ -4,8 +4,13 @@ Open `CareMate.xcodeproj` in Xcode and run the `CareMate` scheme on an iPhone or
 iOS simulator. The target is iOS 17 or newer.
 
 Enter the hub URL and the bearer token configured for Aryan's `HttpAppBus`. The
-app intentionally does not persist the token. `http://` is supported
-for an isolated local demo network; use `https://` on shared networks.
+app saves the URL in device preferences and stores the token in the device-only
+iOS Keychain after Connect is tapped. `http://` is supported for an isolated
+local demo network; use `https://` on shared networks.
+All native requests include ngrok's free-tier interstitial-bypass header, so the
+same client supports REST, SSE, and MJPEG through an ngrok development tunnel.
+The Live View also offers **Load one frame**, a bounded fallback that opens the
+MJPEG endpoint, displays its first complete JPEG, and closes that request.
 
 Run the contract tests with:
 

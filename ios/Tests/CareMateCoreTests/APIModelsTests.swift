@@ -35,6 +35,32 @@ final class APIModelsTests: XCTestCase {
         XCTAssertNil(event.analysis?.capturedAtDate)
     }
 
+    func testRequestsIncludeHubAuthAndNgrokBypassHeaders() throws {
+        let request = APIClient.configuredRequest(
+            url: try XCTUnwrap(URL(string: "https://example.ngrok-free.app/feed")),
+            token: "test-token",
+            timeout: 30
+        )
+
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "ngrok-skip-browser-warning"), "true")
+    }
+
+    func testMJPEGParserHandlesMarkersSplitAcrossNetworkChunks() {
+        var parser = MJPEGFrameParser(maximumJPEGBytes: 100)
+
+        XCTAssertTrue(parser.append(Data([0x2d, 0x2d, 0x66, 0x72, 0x61, 0x6d, 0x65,
+                                          0x0d, 0x0a, 0xff])).isEmpty)
+        let frames = parser.append(Data([0xd8, 0x01, 0x02, 0xff, 0xd9,
+                                         0x2d, 0x2d, 0x66, 0x72, 0x61, 0x6d, 0x65,
+                                         0xff, 0xd8, 0x03, 0xff, 0xd9]))
+
+        XCTAssertEqual(frames, [
+            Data([0xff, 0xd8, 0x01, 0x02, 0xff, 0xd9]),
+            Data([0xff, 0xd8, 0x03, 0xff, 0xd9])
+        ])
+    }
+
     private func decodeEvent(_ json: String) throws -> HubEvent {
         try decoder.decode(HubEvent.self, from: Data(json.utf8))
     }

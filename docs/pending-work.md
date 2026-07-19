@@ -29,11 +29,12 @@ IMU is up on the bench (see Hardware gates).
 
 ## App / API
 
-- [ ] **SSE vs WebSocket — confirm with Anshit.** `docs/app-api.md` specs SSE; it's
-  behind the `AppBus` seam so swapping to WebSocket costs no fusion change. Decide
-  *before* he builds the iOS client.
-- [ ] **TLS + real token store.** MVP uses a single shared bearer token over the LAN.
-  Add TLS and per-user tokens before any non-LAN exposure (see Networking).
+- [x] **SSE client implemented.** `docs/app-api.md` specs SSE and the native iOS
+  client consumes it with bounded reconnect backoff. The `AppBus` seam still keeps
+  a future WebSocket switch out of fusion logic.
+- [ ] **TLS + hub-side per-user token management.** The MVP hub uses a single shared
+  bearer token over the LAN; the iOS client now stores it in the device-only
+  Keychain. Add TLS and per-user tokens before any non-LAN exposure (see Networking).
 - [ ] **Analyze-space real VLM adapter.** `VlmSpaceAnalyzer` validates output but
   isn't wired to a provider; `LocalSummaryAnalyzer` is the default. Per CLAUDE.md,
   verify capability/latency/cost/privacy first, keep the model on-device by

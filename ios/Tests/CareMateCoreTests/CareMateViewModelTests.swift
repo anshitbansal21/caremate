@@ -98,6 +98,29 @@ private final class TestClock: @unchecked Sendable {
     }
 }
 
+private final class FakeConnectionSettingsStore: ConnectionSettingsStoring {
+    private(set) var settings: ConnectionSettings
+    private(set) var savedSettings: ConnectionSettings?
+
+    init(settings: ConnectionSettings) {
+        self.settings = settings
+    }
+
+    func load() -> ConnectionSettings { settings }
+
+    func save(_ settings: ConnectionSettings) {
+        self.settings = settings
+        savedSettings = settings
+    }
+}
+
+private final class FakeCredentialStore: CredentialStoring {
+    var token: String?
+
+    func loadToken() -> String? { token }
+    func saveToken(_ token: String) { self.token = token }
+}
+
 private enum Fixtures {
     static let readyStatus = HubStatus(state: .ready, level: .none, timestampMilliseconds: 100)
 
@@ -120,6 +143,60 @@ private enum Fixtures {
 
 @MainActor
 final class CareMateViewModelTests: XCTestCase {
+    func testConnectionSettingsStorePersistsURLAndDelegatesTokenToSecureStore() throws {
+        let suiteName = "CareMateViewModelTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let credentialStore = FakeCredentialStore()
+        let store = ConnectionSettingsStore(
+            defaults: defaults,
+            credentialStore: credentialStore
+        )
+        let settings = ConnectionSettings(
+            serverAddress: "https://caremate.example.test",
+            accessToken: "saved-token"
+        )
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        try store.save(settings)
+
+        XCTAssertEqual(store.load(), settings)
+        XCTAssertEqual(credentialStore.token, "saved-token")
+    }
+
+    func testRestoresSavedConnectionSettingsOnRelaunch() {
+        let settings = ConnectionSettings(
+            serverAddress: "https://caremate.example.test",
+            accessToken: "saved-token"
+        )
+        let model = CareMateViewModel(
+            client: FakeAPI(),
+            connectionSettingsStore: FakeConnectionSettingsStore(settings: settings)
+        )
+
+        XCTAssertEqual(model.serverAddress, settings.serverAddress)
+        XCTAssertEqual(model.accessToken, settings.accessToken)
+    }
+
+    func testConnectPersistsValidatedConnectionSettings() {
+        let store = FakeConnectionSettingsStore(
+            settings: ConnectionSettings(serverAddress: "", accessToken: "")
+        )
+        let model = CareMateViewModel(connectionSettingsStore: store)
+        model.serverAddress = "https://caremate.example.test"
+        model.accessToken = "new-token"
+
+        model.connect()
+        model.disconnect()
+
+        XCTAssertEqual(
+            store.savedSettings,
+            ConnectionSettings(
+                serverAddress: "https://caremate.example.test",
+                accessToken: "new-token"
+            )
+        )
+    }
+
     func testStatusBecomesStaleAfterThirtySeconds() async throws {
         let clock = TestClock()
         let model = CareMateViewModel(client: FakeAPI(), now: clock.now)
@@ -159,6 +236,17 @@ final class CareMateViewModelTests: XCTestCase {
         try await model.refreshFrameOnce()
 
         XCTAssertEqual(model.frameData, jpeg)
+    }
+
+    func testLoadSingleFramePublishesFallbackImage() async {
+        let jpeg = Data([0xff, 0xd8, 0x01, 0xff, 0xd9])
+        let model = CareMateViewModel(client: FakeAPI(frames: [.success(jpeg)]))
+
+        await model.loadSingleFrame()
+
+        XCTAssertEqual(model.frameData, jpeg)
+        XCTAssertNil(model.feedError)
+        XCTAssertFalse(model.isLoadingSingleFrame)
     }
 
     func testForegroundAndBackgroundStartAndStopMonitoring() {

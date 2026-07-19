@@ -323,11 +323,24 @@ private struct LiveFeedCard: View {
                             .scaledToFit()
                             .accessibilityLabel("Latest annotated camera frame")
                     } else {
-                        ContentUnavailableView(
-                            "Feed unavailable",
-                            systemImage: "video.slash.fill",
-                            description: Text(feedUnavailableMessage)
-                        )
+                        VStack(spacing: 12) {
+                            ContentUnavailableView(
+                                "Feed unavailable",
+                                systemImage: "video.slash.fill",
+                                description: Text(feedUnavailableMessage)
+                            )
+                            Button {
+                                Task { await model.loadSingleFrame() }
+                            } label: {
+                                if model.isLoadingSingleFrame {
+                                    ProgressView()
+                                } else {
+                                    Label("Load one frame", systemImage: "photo")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(model.status == nil || model.isLoadingSingleFrame)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 240)
@@ -376,9 +389,13 @@ private struct LiveFeedCard: View {
     }
 
     private var feedUnavailableMessage: String {
-        model.status == nil
-            ? "Connect to the hub from the Overview or System tab."
-            : "Waiting for a fresh annotated frame from the hub."
+        if model.status == nil {
+            return "Connect to the hub from the Overview or System tab."
+        }
+        if let error = model.feedError {
+            return "Feed connection failed: \(error)"
+        }
+        return "Waiting for a fresh annotated frame from the hub."
     }
 }
 
@@ -653,7 +670,7 @@ private struct ConnectionCard: View {
                     }
                 }
 
-                Text("The token stays in memory for this app session and is not persisted.")
+                Text("Connect saves the hub URL on this device and stores the token securely in Keychain.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

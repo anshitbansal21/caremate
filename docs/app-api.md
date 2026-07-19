@@ -32,6 +32,14 @@ MVP auth. Do not put this on the open internet as-is.
 Every request needs `Authorization: Bearer <token>`. For the SSE and feed
 connections (where a header may be awkward) `?token=<token>` is also accepted. The
 token is configured on the hub; provider credentials (e.g. a VLM key) never leave it.
+The iOS app keeps the hub URL in device preferences and the bearer token in the
+device-only Keychain after a validated Connect action; disconnecting does not erase
+either value.
+
+When using an ngrok free-tier URL, every native client request must also include
+`ngrok-skip-browser-warning: true` so the tunnel returns the API/stream instead
+of its HTML warning page. The iOS client uses native `URLSession` for REST, SSE,
+and MJPEG, so the shared request builder applies both headers to all endpoints.
 
 Missing/wrong token → `401 {"error":"unauthorized"}`.
 
@@ -130,4 +138,5 @@ provider is connected. Show it only while capture is active (consent/visibility)
 ## Not yet wired (hub side)
 
 - `/feed` needs the annotated-JPEG provider from `PoseVisionSource` (follow-up).
-- TLS + a real token store (MVP uses a shared bearer token on the LAN).
+- TLS + hub-side per-user token management remain unwired (the MVP hub uses one
+  shared bearer token on the LAN; the iOS client stores that token in Keychain).
