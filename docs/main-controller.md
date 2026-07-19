@@ -113,16 +113,22 @@ rate:
 
 Recommendation:
 
-- **Default:** **YOLO11n-pose / YOLOv8n-pose, int8-quantized** (TFLite or NCNN),
-  reduced input (e.g. 416–480), deployed through **App Lab + Edge Impulse** — the
-  one inference path already proven on this board. Gives real keypoints for the
-  `lying + no-motion` fusion rule and satisfies the CLAUDE.md YOLOv8 mandate.
-- **Fallback if pose FPS is too low for a smooth feed:** YOLO11n plain
-  person-detection (~17 FPS) + a bounding-box **aspect-ratio > ~1.4** rule, or
-  **MoveNet Lightning** for a lighter keypoint stream.
-- **Fall rule:** no trained fall classifier is needed for the MVP. Keypoint
-  orientation / box aspect-ratio + a no-motion window is the standard, portable
-  pattern (e.g. `andmydignity/fall_detection_yolov8s`, `16dina/fall-detection`).
+- **Committed MVP model:** **YOLOv8n-pose / YOLO11n-pose, int8-quantized** (TFLite
+  or NCNN), reduced input (e.g. 416–480), deployed through **App Lab + Edge
+  Impulse** — the one inference path already proven on this board. It yields, from
+  a single model, **both** the person bounding box **and** 17 keypoints, so the
+  live annotated feed shows boxes *and* the four MVP activity labels.
+- **Pose (keypoints) is required, not optional, for the MVP.** MVP feature 2 needs
+  `standing / sitting / lying / walking`, and **plain bounding-box detection cannot
+  separate sitting from standing** (same box shape). So plain-box detection is
+  *not* an acceptable MVP path — only a live-feed **frame-rate degrade of last
+  resort**, and one that fails the activity-label requirement, so avoid it.
+- **Frame rate, not labels, is the tuning knob.** If pose FPS is low, reduce input
+  resolution, run detection every Nth frame while tracking between, or GPU/QNN-
+  offload — never drop to box-only to buy FPS.
+- **Fall rule:** no trained fall classifier is needed. Keypoint orientation +
+  a no-motion window is the standard, portable pattern (e.g.
+  `andmydignity/fall_detection_yolov8s`, `16dina/fall-detection`).
 - **GPU/QNN offload is an optimization, not a dependency** — get it working on CPU
   int8 first.
 
