@@ -20,6 +20,19 @@ Prefer a small server on the UNO Q Linux side. It receives wearable and vision e
 
 When the wearable sends a candidate-fall event, Aryan's control system forwards a visible **possible fall** state to the phone app through Anshit's API while the vision layer awaits confirmation. The UI then updates that same event to confirmed, rejected, or uncertain without representing the wearable candidate as a confirmed fall.
 
+The implementation uses Aryan's `HttpAppBus` and the contract in
+`docs/app-api.md` as the single hub-to-phone boundary. Status, fall alerts, and
+analysis results are pushed over one authenticated long-lived SSE request;
+Analyze space, acknowledgement, and cancellation use bounded REST requests; the
+annotated camera view uses a separate MJPEG connection. The iOS app reconnects
+both streams with bounded backoff and fetches `/status` before subscribing.
+
+Analyze space captures on the hub and runs through the provider-neutral
+`SpaceAnalyzer`. The phone only renders the validated structured response and
+never owns model credentials or calls a foundation-model provider directly.
+`/feed` remains explicitly unavailable until the pose vision source exposes an
+annotated-JPEG provider.
+
 ## On-demand analysis flow
 
 ```text
@@ -86,6 +99,10 @@ An analysis result should use a separate versioned contract, for example:
 ```
 
 Do not store raw frames by default. If analysis uses an off-device provider, require consent, transmit only the request-scoped frame data, exclude audio and continuous video, keep credentials on the server, and verify the provider's retention behavior.
+
+The implemented phone-facing schemas, enum values, endpoint inputs/outputs, and
+failure responses are specified in `docs/app-api.md`. That contract supersedes
+these abbreviated examples; it does not change ownership of fusion or inference.
 
 ## Reliability principles
 

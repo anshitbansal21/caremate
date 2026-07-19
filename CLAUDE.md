@@ -68,6 +68,8 @@ Drive the local buzzer, red LED, and LCD from the hub. Keep microcontroller-faci
 
 Run a small server, preferably on the UNO Q Linux side for the MVP. It receives sensor and vision events and exposes authenticated APIs for the annotated camera feed, current status, real-time fall alerts, and **Analyze space** action. Build a native iOS app as the MVP client. The analysis result should say whether the person is on the bed, standing, sitting, lying, walking, not visible, or uncertain, plus a concise room summary. Do not add web or Android clients unless explicitly requested.
 
+The implemented phone contract is `docs/app-api.md`. Aryan's `HttpAppBus` on the UNO Q Linux side is the single backend: authenticated `GET /events` SSE for live status/alert/analysis updates, REST actions at `/status`, `/analyze`, `/ack`, and `/cancel`, and an MJPEG `/feed`. The native iOS 17 SwiftUI app consumes those payloads directly and reconnects its SSE and feed connections with bounded backoff. **Analyze space** always executes on the hub against a request-scoped fresh image; provider credentials and raw model calls never live in the phone app. The current `/feed` remains unavailable until the vision source's annotated-frame provider is wired.
+
 ## Event fusion
 
 Keep these states distinct:
@@ -117,7 +119,10 @@ Keep message schemas and acceptance tests documented so each owner can work inde
 
 - `README.md`: teammate onboarding and repository overview
 - `docs/architecture.md`: system boundaries and message flow
+- `docs/app-api.md`: authoritative Aryan hub→Anshit iOS API contract
 - `docs/hardware-plan.md`: hardware roles and pin-planning worksheet
+- `hub/caremate_hub/app_server.py`: single authenticated phone backend
+- `ios/`: native iOS app and shared contract tests
 - `firmware/caremate_controller/`: UNO Q controller firmware
 - `AGENTS.md`: portable agent workflow (Codex, Claude Code, and others)
 

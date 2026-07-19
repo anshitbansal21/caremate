@@ -8,7 +8,7 @@ be swapped or mocked without touching the fusion logic.
 
 > Scope note: this is Aryan's control-system layer. It does **not** implement the
 > ESP32↔UNO Q transport (owned via `WearableSource`), the YOLOv8 model (owned via
-> `VisionSource`), the API server (owned via `AppBus`), or the MCU firmware (owned
+> `VisionSource`), the phone server (implemented by `HttpAppBus`), or the MCU firmware (owned
 > via `AlertSink` + `firmware/caremate_controller`). It defines the seams between them.
 
 ## Run it (no hardware needed)
@@ -28,11 +28,15 @@ Pure standard library — no pip install, no camera, no Wi-Fi.
 | `WearableSource` | ESP32↔UNO Q transport carrying `candidate_fall` events | `MockWearable` (scripted) |
 | `VisionSource` | On-device YOLOv8 pose + NL/VLM Analyze-space | `MockVision` (scripted stream) |
 | `AlertSink` | MCU firmware over serial (buzzer / red LED / LCD) | `MockAlertSink` (prints); `SerialAlertSink` (real protocol, injected writer) |
-| `AppBus` | Anshit's API layer → iOS app | `MockAppBus` (scripted actions) |
+| `AppBus` | `HttpAppBus` SSE/REST/MJPEG server → iOS app | `MockAppBus` (scripted actions) |
 
 `MainController` depends on the abstractions above and on `Clock` (injectable, so
 tests and the demo run in deterministic simulated time — mirrors the firmware's
 non-blocking `millis()` timing).
+
+`HttpAppBus` and its contract are implemented and tested, but the current bench
+runner does not instantiate it yet. The annotated `/feed` also needs a JPEG
+provider from `PoseVisionSource` before a physical phone can receive live frames.
 
 ## Fall detection is phased (where each piece runs)
 

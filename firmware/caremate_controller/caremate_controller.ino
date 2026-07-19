@@ -17,7 +17,11 @@ enum class CareMateState {
 
 CareMateState currentState = CareMateState::STARTING;
 unsigned long lastHeartbeatMs = 0;
+unsigned long lastLedToggleMs = 0;
 constexpr unsigned long HEARTBEAT_INTERVAL_MS = 1000;
+constexpr unsigned long LED_BLINK_INTERVAL_MS = 500;
+constexpr uint8_t TEST_LED_PIN = 3;
+bool testLedOn = false;
 
 const __FlashStringHelper* stateName(CareMateState state) {
   switch (state) {
@@ -47,6 +51,9 @@ void setup() {
   delay(250);
   Serial.println(F("CareMate controller starting"));
 
+  pinMode(TEST_LED_PIN, OUTPUT);
+  digitalWrite(TEST_LED_PIN, LOW);
+
   // Initialize buttons, display, indicators, and sensors here as modules land.
   setState(CareMateState::READY);
 }
@@ -59,6 +66,12 @@ void loop() {
     lastHeartbeatMs = now;
     Serial.print(F("HEARTBEAT state="));
     Serial.println(stateName(currentState));
+  }
+
+  if (now - lastLedToggleMs >= LED_BLINK_INTERVAL_MS) {
+    lastLedToggleMs = now;
+    testLedOn = !testLedOn;
+    digitalWrite(TEST_LED_PIN, testLedOn ? HIGH : LOW);
   }
 
   // Planned loop order:

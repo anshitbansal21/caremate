@@ -30,10 +30,13 @@ No motors or mobile chassis are confirmed. Each LED requires a current-limiting 
 
 ```text
 caremate/
+├── hub/                         # Vision/fusion system and phone backend
+├── ios/                         # Native SwiftUI app and contract tests
 ├── firmware/
 │   └── caremate_controller/     # Arduino controller firmware
 ├── docs/
 │   ├── architecture.md          # Proposed system boundaries and data flow
+│   ├── app-api.md               # Authoritative hub-to-iOS API contract
 │   └── hardware-plan.md         # Initial controls and pin-planning worksheet
 ├── .gitignore
 ├── AGENTS.md                    # Portable agent workflow (Codex, Claude Code, ...)
@@ -43,6 +46,13 @@ caremate/
 ```
 
 ## Quick start
+
+### API and iOS app
+
+Aryan's `hub/caremate_hub/app_server.py` is the single phone backend. The native
+iOS app in `ios/` connects directly to its authenticated SSE, REST, and MJPEG
+endpoints. See `docs/app-api.md` for the exact contract. Swift contract tests run
+with `swift test` from `ios/`; open `ios/CareMate.xcodeproj` to build the app.
 
 ### 1. Install tools
 

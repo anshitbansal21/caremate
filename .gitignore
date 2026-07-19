@@ -5,6 +5,15 @@ build/
 *.hex
 *.bin
 
+# Python and Swift build output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.build/
+DerivedData/
+
 # Local configuration and secrets
 .env
 .env.*
@@ -12,18 +21,13 @@ build/
 secrets.h
 credentials.h
 
-# Python (vision hub)
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-venv/
-
 # Editors and operating systems
 .DS_Store
 .idea/
 .vscode/
 *.swp
+xcuserdata/
+*.xcuserstate
 
 # Logs and captured media
 *.log
