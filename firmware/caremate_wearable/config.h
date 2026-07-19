@@ -23,10 +23,12 @@ static const unsigned long SAMPLE_INTERVAL_MS = 10;
 // Fall heuristic thresholds  (stage order: impact -> orientation -> stillness)
 // ---------------------------------------------------------------------------
 struct HeuristicConfig {
-  // Stage 1 — impact. Acceleration magnitude (SVM) spike, in g. A real impact
-  // typically exceeds 2.5-3 g; set the sensor range to +/-8 g or +/-16 g so the
-  // spike is NOT clipped (a clipped impact is an undetected fall).
-  float impact_g = 2.5f;
+  // Stage 1 — impact. Acceleration magnitude (SVM) spike, in g. Lowered to 2.0
+  // from a bench drop-rig session where a genuine drop onto a semi-soft surface
+  // landed at only ~2.1 g. Stages 2+3 (orientation change + sustained stillness)
+  // still gate out false positives, so this stays safe. Set the sensor range to
+  // +/-8 g or +/-16 g so the spike is NOT clipped (a clipped impact is missed).
+  float impact_g = 2.0f;
 
   // Optional pre-impact free-fall dip, in g. During free fall SVM approaches 0.
   // Seeing a dip below this shortly before the impact raises confidence; it is
