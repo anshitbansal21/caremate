@@ -23,6 +23,7 @@ public protocol CareMateAPI: Sendable {
     func acknowledge() async throws -> AcceptedAction
     func cancel() async throws -> AcceptedAction
     func annotatedFrames() async throws -> AsyncThrowingStream<Data, Error>
+    func frame() async throws -> Data
 }
 
 public actor APIClient: CareMateAPI {
@@ -97,6 +98,22 @@ public actor APIClient: CareMateAPI {
         configuredRequest.setValue("multipart/x-mixed-replace", forHTTPHeaderField: "Accept")
         let feedRequest = configuredRequest
         return MJPEGStream.open(request: feedRequest, maximumJPEGBytes: Self.maximumJPEGBytes)
+    }
+
+    /// Fetch a single latest JPEG from `GET /frame`.
+    ///
+    /// This is a plain buffered request — the same path `status()` uses — so it
+    /// works wherever status works. It is the reliable live-feed source: poll it
+    /// on a timer for a smooth feed, without depending on `URLSession`'s flaky
+    /// handling of `multipart/x-mixed-replace` MJPEG streams (the `annotatedFrames`
+    /// path), which frequently delivers nothing through a proxy like ngrok.
+    public func frame() async throws -> Data {
+        var frameRequest = request(url: endpoint("frame"), timeout: 15)
+        frameRequest.setValue("image/jpeg", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: frameRequest)
+        try Self.validate(response, contentTypePrefix: "image/jpeg")
+        guard !data.isEmpty else { throw APIClientError.invalidResponse }
+        return data
     }
 
     private func get<T: Decodable>(

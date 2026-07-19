@@ -78,6 +78,11 @@ private actor FakeAPI: CareMateAPI {
         }
     }
 
+    func frame() async throws -> Data {
+        guard !frames.isEmpty else { throw FakeError.network }
+        return try frames.removeFirst().get()
+    }
+
     func actionCounts() -> (Int, Int) { (acknowledgements, cancellations) }
 }
 

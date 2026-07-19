@@ -201,18 +201,20 @@ final class CareMateViewModel: ObservableObject {
     }
 
     private func runFrameLoop() async {
+        // Poll GET /frame on a timer rather than consuming the MJPEG /feed stream.
+        // /frame is a plain buffered request (the same path status uses), so it is
+        // reliable through a proxy; multipart/x-mixed-replace over URLSession is not.
         var retryNanoseconds: UInt64 = 1_000_000_000
+        let pollIntervalNanoseconds: UInt64 = 150_000_000  // ~6-7 fps: smooth, light
         while !Task.isCancelled {
             do {
                 guard let client else { return }
-                let stream = try await client.annotatedFrames()
-                for try await frame in stream {
-                    try Task.checkCancellation()
-                    frameData = frame
-                    feedError = nil
-                    retryNanoseconds = 1_000_000_000
-                }
-                throw APIClientError.streamEnded
+                let frame = try await client.frame()
+                try Task.checkCancellation()
+                frameData = frame
+                feedError = nil
+                retryNanoseconds = 1_000_000_000
+                try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
             } catch is CancellationError {
                 return
             } catch {
@@ -237,13 +239,8 @@ final class CareMateViewModel: ObservableObject {
 
     func refreshFrameOnce() async throws {
         guard let client else { throw APIClientError.invalidConfiguration }
-        let stream = try await client.annotatedFrames()
-        for try await frame in stream {
-            frameData = frame
-            feedError = nil
-            return
-        }
-        throw APIClientError.streamEnded
+        frameData = try await client.frame()
+        feedError = nil
     }
 
     func apply(_ event: HubEvent) {
