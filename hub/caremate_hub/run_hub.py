@@ -105,6 +105,11 @@ def main() -> None:
     p.add_argument("--cam-index", type=int, default=0)
     p.add_argument("--model", default="yolov8n-pose.pt")
     p.add_argument("--imgsz", type=int, default=480)
+    p.add_argument("--feed-camera", action="store_true",
+                   help="serve a live MJPEG /feed from a UVC webcam via v4l2-ctl "
+                        "(dependency-free, un-annotated; no ultralytics/opencv)")
+    p.add_argument("--feed-device", default="/dev/video0",
+                   help="V4L2 device for --feed-camera")
     p.add_argument("--serial", default=None, help="MCU serial device for real alerts")
     p.add_argument("--baud", type=int, default=115200)
     p.add_argument("--demo", action="store_true", help="inject a scripted fall (no hardware)")
@@ -114,7 +119,16 @@ def main() -> None:
 
     clock = RealClock()
     wearable = WearableServer(clock, host=args.host, port=args.wearable_port)
-    app = HttpAppBus(clock, host=args.host, port=args.port, token=args.token)
+    camera = None
+    frame_provider = None
+    if args.feed_camera:
+        from .camera_feed import V4l2MjpegCamera
+        camera = V4l2MjpegCamera(device=args.feed_device)
+        camera.start()
+        time.sleep(2.0)  # let the C270 auto-exposure settle before the feed goes live
+        frame_provider = camera.latest_jpeg
+    app = HttpAppBus(clock, host=args.host, port=args.port, token=args.token,
+                     frame_provider=frame_provider)
     alert = _build_alert(args)
     vision, threaded_vision = _build_vision(args, clock)
 
@@ -146,6 +160,8 @@ def main() -> None:
     finally:
         wearable.close()
         app.close()
+        if camera is not None:
+            camera.close()
         if threaded_vision:
             vision.close()
 
@@ -159,7 +175,9 @@ def _banner(args, app, wearable) -> None:
     print(f"  wearable    tcp://<hub-ip>:{wearable.port}   (ESP32 candidate events)")
     print(f"  vision      {vsrc}")
     print(f"  alerts      {asink}")
-    print(f"  feed        /feed returns 503 until an annotated-JPEG provider is wired\n")
+    feed_desc = "live MJPEG (v4l2 webcam)" if args.feed_camera else (
+        "503 until a frame provider is wired")
+    print(f"  feed        /feed  {feed_desc}\n")
     print("  try:  curl -H 'Authorization: Bearer %s' http://127.0.0.1:%d/status" % (args.token, app.port))
     print("        curl -N -H 'Authorization: Bearer %s' http://127.0.0.1:%d/events\n" % (args.token, app.port))
 
