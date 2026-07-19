@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CareMate — Web Console</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel2: #1c2230; --line: #2b3444;
+    --text: #e6edf3; --muted: #8b98a9; --accent: #4c8dff;
+    --ok: #2ea043; --possible: #d9a300; --check: #e8770a; --alert: #e5484d;
+    --fault: #6e7681;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header .brand { font-weight: 700; letter-spacing: .3px; }
+  header .brand small { color: var(--muted); font-weight: 500; margin-left: 8px; }
+  .conn { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--fault); }
+  .dot.up { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.down { background: var(--alert); }
+  main { max-width: 1080px; margin: 0 auto; padding: 20px; display: grid; gap: 18px;
+         grid-template-columns: 1fr 1fr; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
+  .hero {
+    grid-column: 1 / -1; border-radius: 14px; padding: 28px 26px; border: 1px solid var(--line);
+    background: var(--panel); transition: background .3s, border-color .3s;
+  }
+  .hero .label { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); }
+  .hero .state { font-size: 34px; font-weight: 800; margin: 6px 0 4px; }
+  .hero .detail { color: var(--muted); }
+  .hero.lv-none { border-color: #24333f; }
+  .hero.lv-possible { background: #2a2410; border-color: var(--possible); }
+  .hero.lv-check { background: #2b1c10; border-color: var(--check); }
+  .hero.lv-confirmed { background: #2c1416; border-color: var(--alert); animation: pulse 1s infinite; }
+  .hero.lv-fault { background: #1a1e24; border-color: var(--fault); }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(229,72,77,.5);} 50% { box-shadow: 0 0 0 10px rgba(229,72,77,0);} }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .card h2 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .feed-wrap { grid-column: 1 / -1; }
+  .feed { width: 100%; aspect-ratio: 4/3; background: #0a0d12; border-radius: 10px; object-fit: contain;
+          display: block; border: 1px solid var(--line); }
+  .feed-msg { display: grid; place-items: center; height: 100%; color: var(--muted); text-align: center; padding: 20px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    appearance: none; border: 1px solid var(--line); background: var(--panel2); color: var(--text);
+    padding: 11px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: transform .05s, background .15s;
+  }
+  button:hover { background: #232c3d; }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.warn { background: transparent; border-color: var(--check); color: var(--check); }
+  button:disabled { opacity: .5; cursor: default; }
+  .analysis .row { display: flex; gap: 8px; margin: 4px 0; }
+  .analysis .k { color: var(--muted); min-width: 120px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .pill.alert { background: #3a1618; color: #ff9a9c; }
+  .pill.check { background: #33230f; color: #ffb765; }
+  .pill.none { background: #14301c; color: #6ee7a0; }
+  #log { grid-column: 1 / -1; }
+  .logbox { max-height: 220px; overflow-y: auto; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+  .logline { padding: 3px 0; border-bottom: 1px solid #1b2230; color: var(--muted); }
+  .logline b { color: var(--text); }
+  .logline .t-alert b { color: var(--alert); }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">CareMate <small>Web Console — fallback client</small></div>
+  <div class="conn"><span id="dot" class="dot"></span><span id="connText">connecting…</span></div>
+</header>
+
+<main>
+  <section id="hero" class="hero lv-none">
+    <div class="label">Current status</div>
+    <div id="heroState" class="state">All clear</div>
+    <div id="heroDetail" class="detail">Waiting for the hub…</div>
+  </section>
+
+  <section class="feed-wrap card">
+    <h2>Live annotated feed</h2>
+    <img id="feed" class="feed" alt="live feed" />
+    <div id="feedMsg" class="feed-msg" style="display:none"></div>
+  </section>
+
+  <section class="card">
+    <h2>Actions</h2>
+    <div class="btns">
+      <button id="btnAnalyze" class="primary">Analyze space</button>
+      <button id="btnAck">Acknowledge</button>
+      <button id="btnCancel" class="warn">Cancel / Test</button>
+    </div>
+    <p class="muted" style="margin:12px 0 0;font-size:13px">
+      “Analyze space” asks the hub for a fresh person/room read. “Acknowledge” clears an
+      active alert and resets the wearable. “Cancel / Test” is the safe test button.
+    </p>
+  </section>
+
+  <section class="card analysis">
+    <h2>Latest analysis</h2>
+    <div id="analysisBody" class="muted">No analysis yet — tap “Analyze space”.</div>
+  </section>
+
+  <section id="log" class="card">
+    <h2>Event log</h2>
+    <div id="logbox" class="logbox"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const STATE_LABEL = {
+    ready: "All clear", awaiting_vision: "Possible fall", confirmed_fall: "Fall detected",
+    alerting: "FALL DETECTED", uncertain: "Check on user", rejected: "All clear", fault: "System fault",
+  };
+  const LEVEL_CLASS = { none: "lv-none", possible: "lv-possible", check: "lv-check", confirmed: "lv-confirmed" };
+  const DETAIL = {
+    none: "No fall detected.", possible: "Wearable candidate — confirming with the camera…",
+    check: "Uncertain — please check on the user.", confirmed: "Confirmed fall. Acknowledge when handled.",
+  };
+
+  let lastLevel = null;
+
+  function setConn(up) {
+    $("dot").className = "dot " + (up ? "up" : "down");
+    $("connText").textContent = up ? "connected to hub" : "disconnected — retrying";
+  }
+
+  function applyStatus(state, level, detail) {
+    const hero = $("hero");
+    hero.className = "hero " + (LEVEL_CLASS[level] || (state === "fault" ? "lv-fault" : "lv-none"));
+    $("heroState").textContent = STATE_LABEL[state] || state;
+    $("heroDetail").textContent = detail || DETAIL[level] || "";
+    if (level === "confirmed" && lastLevel !== "confirmed") beep();
+    lastLevel = level;
+  }
+
+  function renderAnalysis(m) {
+    const rec = (m.alert_recommendation || "none");
+    const risks = (m.risk_observations || []);
+    $("analysisBody").innerHTML = `
+      <div class="row"><span class="k">Person</span><b>${esc(m.person_state)}</b></div>
+      <div class="row"><span class="k">Room</span><span>${esc(m.room_summary || "")}</span></div>
+      <div class="row"><span class="k">Risks</span><span>${risks.length ? risks.map(esc).join("; ") : "—"}</span></div>
+      <div class="row"><span class="k">Recommendation</span><span class="pill ${rec}">${esc(rec)}</span></div>
+      <div class="row"><span class="k">Uncertain</span><span>${m.uncertain ? "yes" : "no"}</span></div>`;
+  }
+
+  function log(m) {
+    const box = $("logbox");
+    const t = new Date().toLocaleTimeString();
+    const cls = m.type === "alert" ? "t-alert" : "";
+    let text;
+    if (m.type === "status") text = `status → <b>${esc(m.state)}</b> / ${esc(m.level)}`;
+    else if (m.type === "alert") text = `<span class="${cls}"><b>ALERT</b></span> ${esc(m.state)} (${esc(m.level)}) — ${esc(m.detail||"")}`;
+    else if (m.type === "analysis") text = `analysis → ${esc(m.person_state)} (${esc(m.alert_recommendation)})`;
+    else text = esc(JSON.stringify(m));
+    const div = document.createElement("div");
+    div.className = "logline";
+    div.innerHTML = `<span class="muted">${t}</span> &nbsp; ${text}`;
+    box.prepend(div);
+    while (box.children.length > 200) box.lastChild.remove();
+  }
+
+  function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
+
+  // ---- SSE (via same-origin proxy) --------------------------------------
+  let es;
+  function connect() {
+    es = new EventSource("/api/events");
+    es.onopen = () => setConn(true);
+    es.onerror = () => { setConn(false); };  // EventSource auto-reconnects
+    es.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      setConn(true);
+      log(m);
+      if (m.type === "status" || m.type === "alert") applyStatus(m.state, m.level, m.detail);
+      else if (m.type === "analysis") renderAnalysis(m);
+    };
+  }
+
+  // ---- Actions ----------------------------------------------------------
+  async function post(path, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const r = await fetch("/api" + path, { method: "POST" });
+      return await r.json().catch(() => ({}));
+    } catch (e) { log({ type: "status", state: "action failed", level: path }); return null; }
+    finally { if (btn) btn.disabled = false; }
+  }
+  $("btnAnalyze").onclick = async (e) => {
+    const b = e.currentTarget; b.textContent = "Analyzing…";
+    const m = await post("/analyze", b);
+    b.textContent = "Analyze space";
+    if (m && m.person_state) { m.type = "analysis"; renderAnalysis(m); log(m); }
+  };
+  $("btnAck").onclick = (e) => post("/ack", e.currentTarget);
+  $("btnCancel").onclick = (e) => post("/cancel", e.currentTarget);
+
+  // ---- Live feed: try MJPEG /feed, fall back to polling /frame ----------
+  const feed = $("feed"), feedMsg = $("feedMsg");
+  let framePoll = null;
+  function showFeedMsg(text) {
+    feed.style.display = "none";
+    feedMsg.style.display = "grid";
+    feedMsg.textContent = text;
+  }
+  function startFramePolling() {
+    if (framePoll) return;
+    let fails = 0;
+    const tick = () => {
+      const probe = new Image();
+      probe.onload = () => { feed.style.display = "block"; feedMsg.style.display = "none"; feed.src = probe.src; fails = 0; };
+      probe.onerror = () => { if (++fails >= 3) showFeedMsg("Live feed not available yet (camera not wired on hub)."); };
+      probe.src = "/api/frame?t=" + Date.now();
+    };
+    tick();
+    framePoll = setInterval(tick, 1000);
+  }
+  feed.onerror = () => startFramePolling();
+  feed.src = "/api/feed";
+
+  connect();
+})();
+</script>
+</body>
+</html>
